@@ -1,0 +1,21 @@
+# Claude Code が生成する一時ファイル
+*.tmp
+*.bak
+
+# ローカル専用設定（Git 管理しない）
+config.local.yml
+*.local.yml
+
+# 機密情報
+secrets/
+*.secret
+.env
+
+# OS 生成ファイル
+.DS_Store
+Thumbs.db
+
+# エディタ
+*.swp
+*.swo
+*~

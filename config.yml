@@ -1,0 +1,21 @@
+# claude-config 共通設定
+#
+# このファイルはグローバルなデフォルト値を定義する。
+# repo 側の .claude/config.yml で上書き可能。
+
+commit:
+  # コミットメッセージの言語
+  # - ja: 日本語
+  # - en: 英語
+  # - auto: 直近のコミットから自動判定
+  language: auto
+
+  # Co-Authored-By footer を付与するか
+  # - true: 付与する
+  # - false: 付与しない
+  footer: false
+
+  # ステージングモード
+  # - all: 関連ファイルを自動で git add
+  # - interactive: ユーザーに確認してから git add
+  stage_mode: interactive
