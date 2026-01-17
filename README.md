@@ -8,17 +8,26 @@ Claude Code のグローバル設定を Git 管理するためのリポジトリ
 - 複数プロジェクト・複数マシンで共通の command を利用可能にする
 - repo 側の `.claude` による override を前提とした設計
 
-## ~/.claude との関係
-
-このリポジトリの内容は `~/.claude` に配置して使用する。
+## セットアップ
 
 ```bash
-# 例: シンボリックリンクで配置
-ln -s ~/github/claude-config ~/.claude
+# 1. リポジトリを clone
+git clone git@github.com:tyoshii/claude-config.git ~/github/tyoshii/claude-config
 
-# または直接 clone
-git clone git@github.com:tyoshii/claude-config.git ~/.claude
+# 2. セットアップスクリプトを実行
+cd ~/github/tyoshii/claude-config
+./setup.sh
 ```
+
+セットアップスクリプトは `~/.claude/commands` にシンボリックリンクを作成する。
+
+```
+~/.claude/commands -> ~/github/tyoshii/claude-config/command
+```
+
+**注意**: `~/.claude` ディレクトリ全体を置き換えないこと。Claude Code の履歴やキャッシュが失われる。
+
+## ~/.claude との関係
 
 Claude Code は以下の優先順位で設定を読み込む：
 
@@ -43,6 +52,7 @@ repo 側に同名の command が存在すれば、そちらが優先される。
 claude-config/
 ├── README.md
 ├── .gitignore
+├── setup.sh          # セットアップスクリプト
 ├── command/          # グローバル command
 │   └── commit.md
 ├── config.yml        # 共通設定
