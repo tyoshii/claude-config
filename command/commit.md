@@ -58,17 +58,11 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ### 5. ステージング
 
-`config.yml` の `commit.stage_mode` を参照：
-
-- `all`：関連する全ファイルを `git add`
-- `interactive`：ユーザーに確認してから `git add`
-
-未設定の場合は `interactive` として扱う。
+関連する全ファイルを `git add` する。
 
 ### 6. コミット実行
 
-- ユーザーにコミットメッセージを提示
-- 確認を得てから `git commit` を実行
+- 確認は求めず、そのまま `git commit` を実行する
 - push は行わない（明示的に指示された場合のみ）
 
 ## 注意事項

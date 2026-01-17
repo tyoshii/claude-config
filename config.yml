@@ -14,8 +14,3 @@ commit:
   # - true: 付与する
   # - false: 付与しない
   footer: false
-
-  # ステージングモード
-  # - all: 関連ファイルを自動で git add
-  # - interactive: ユーザーに確認してから git add
-  stage_mode: interactive
