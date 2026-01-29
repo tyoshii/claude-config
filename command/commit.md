@@ -1,6 +1,10 @@
-# /commit
+# /commit [push]
 
 変更内容を確認し、適切なコミットメッセージを作成してコミットを実行する。
+
+## 引数
+
+- `push` : コミット後に `git push` も実行する
 
 ## 実行手順
 
@@ -63,7 +67,11 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 ### 6. コミット実行
 
 - 確認は求めず、そのまま `git commit` を実行する
-- push は行わない（明示的に指示された場合のみ）
+
+### 7. push（引数に `push` がある場合のみ）
+
+- `git push` を実行する
+- 引数がない場合は push しない
 
 ## 注意事項
 
