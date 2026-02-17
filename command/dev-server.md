@@ -1,14 +1,20 @@
-# /dev-server
+# /dev-server [ポート番号]
 
 開発サーバーを起動する。ポートが使用中の場合は該当プロセスのみを停止して再起動する。
+
+ポート番号を引数で指定した場合、そのポートで起動する。
+
+履歴はブランチ単位で記録するため、ブランチごとに異なるポートで開発できる。
 
 ## 実行手順
 
 ### 1. ポート番号の決定
 
-以下の優先順位でポートを決定する：
+**引数でポート番号が指定された場合**：そのポートを使用する（以下の優先順位をスキップ）。
 
-1. **過去の履歴**：`.claude/dev-server.yml` に記録されたポートがあれば優先
+**引数がない場合**、以下の優先順位でポートを決定する：
+
+1. **過去の履歴**：`.claude/dev-server.yml` の現在のブランチのエントリがあれば優先
 2. **プロジェクト設定**：以下のファイルからデフォルトポートを検出
    - `package.json` の scripts 内のポート指定（`--port`, `-p` オプション）
    - `.env` / `.env.local` / `.env.development` の `PORT` 変数
@@ -52,7 +58,7 @@ fi
 
 以下の優先順位で起動コマンドを決定する：
 
-1. **過去の履歴**：`.claude/dev-server.yml` に記録されたコマンドがあれば優先
+1. **過去の履歴**：`.claude/dev-server.yml` の現在のブランチのエントリにコマンドがあれば優先
 2. **package.json の scripts**：
    - `dev` があれば `npm run dev`（または `yarn dev` / `pnpm dev`）
    - `start` があれば `npm run start`
@@ -83,12 +89,20 @@ npm run dev
 
 ### 7. 履歴の記録
 
-成功したら `.claude/dev-server.yml` に記録：
+成功したら `.claude/dev-server.yml` に **現在のブランチ名をキー** にして記録する。
+
+ブランチ名は `git rev-parse --abbrev-ref HEAD` で取得する（worktree でも正しく動作する）。
 
 ```yaml
-port: 3000
-command: npm run dev
-last_used: 2024-01-20
+branches:
+  main:
+    port: 3000
+    command: npm run dev
+    last_used: 2024-01-20
+  feature/auth:
+    port: 3001
+    command: npm run dev
+    last_used: 2024-01-21
 ```
 
 ## 注意事項
