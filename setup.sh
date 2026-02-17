@@ -1,12 +1,11 @@
 #!/bin/bash
 #
 # claude-config セットアップスクリプト
-# ~/.claude/commands にシンボリックリンクを作成する
+# ~/.claude/commands と statusline.sh のシンボリックリンクを作成する
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-TARGET_DIR="$HOME/.claude/commands"
 
 # ~/.claude が存在するか確認
 if [ ! -d "$HOME/.claude" ]; then
@@ -15,24 +14,35 @@ if [ ! -d "$HOME/.claude" ]; then
     exit 1
 fi
 
-# 既存の commands を確認
-if [ -e "$TARGET_DIR" ]; then
-    if [ -L "$TARGET_DIR" ]; then
-        current_link=$(readlink "$TARGET_DIR")
-        if [ "$current_link" = "$SCRIPT_DIR/command" ]; then
-            echo "Already linked: $TARGET_DIR -> $SCRIPT_DIR/command"
-            exit 0
-        fi
-        echo "Removing existing symlink: $TARGET_DIR -> $current_link"
-        rm "$TARGET_DIR"
-    else
-        echo "Error: $TARGET_DIR exists and is not a symlink."
-        echo "バックアップしてから手動で削除してください。"
-        exit 1
-    fi
-fi
+# シンボリックリンクを作成する関数
+link() {
+    local src="$1"
+    local dest="$2"
 
-# シンボリックリンクを作成
-ln -s "$SCRIPT_DIR/command" "$TARGET_DIR"
-echo "Created symlink: $TARGET_DIR -> $SCRIPT_DIR/command"
+    if [ -e "$dest" ]; then
+        if [ -L "$dest" ]; then
+            current_link=$(readlink "$dest")
+            if [ "$current_link" = "$src" ]; then
+                echo "Already linked: $dest -> $src"
+                return
+            fi
+            echo "Removing existing symlink: $dest -> $current_link"
+            rm "$dest"
+        else
+            echo "Error: $dest exists and is not a symlink."
+            echo "バックアップしてから手動で削除してください。"
+            exit 1
+        fi
+    fi
+
+    ln -s "$src" "$dest"
+    echo "Created symlink: $dest -> $src"
+}
+
+# commands ディレクトリ
+link "$SCRIPT_DIR/command" "$HOME/.claude/commands"
+
+# statusline.sh
+link "$SCRIPT_DIR/statusline.sh" "$HOME/.claude/statusline.sh"
+
 echo "Setup complete!"
