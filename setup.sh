@@ -45,4 +45,17 @@ link "$SCRIPT_DIR/command" "$HOME/.claude/commands"
 # statusline.sh
 link "$SCRIPT_DIR/statusline.sh" "$HOME/.claude/statusline.sh"
 
+# settings.json に statusLine 設定を追加
+SETTINGS="$HOME/.claude/settings.json"
+if [ ! -f "$SETTINGS" ]; then
+    echo '{}' > "$SETTINGS"
+fi
+if jq -e '.statusLine' "$SETTINGS" > /dev/null 2>&1; then
+    echo "Already configured: statusLine in $SETTINGS"
+else
+    jq '.statusLine = {"type": "command", "command": "~/.claude/statusline.sh"}' "$SETTINGS" > "$SETTINGS.tmp" \
+        && mv "$SETTINGS.tmp" "$SETTINGS"
+    echo "Added statusLine config to $SETTINGS"
+fi
+
 echo "Setup complete!"
