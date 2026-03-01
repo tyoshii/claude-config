@@ -18,7 +18,7 @@
 
 **引数がないか `soft` の場合**（デフォルト）、以下の優先順位でベースポートを決定した後、使用中であれば空きポートを探す：
 
-1. **過去の履歴**：`.claude/dev-server.yml` の現在のブランチのエントリがあれば優先
+1. **過去の履歴**：`~/.claude/projects/<プロジェクトパスをエンコード>/dev-server.yml` の現在のブランチのエントリがあれば優先
 2. **プロジェクト設定**：以下のファイルからデフォルトポートを検出
    - `package.json` の scripts 内のポート指定（`--port`, `-p` オプション）
    - `.env` / `.env.local` / `.env.development` の `PORT` 変数
@@ -73,7 +73,7 @@ fi
 
 以下の優先順位で起動コマンドを決定する：
 
-1. **過去の履歴**：`.claude/dev-server.yml` の現在のブランチのエントリにコマンドがあれば優先
+1. **過去の履歴**：`~/.claude/projects/<プロジェクトパスをエンコード>/dev-server.yml` の現在のブランチのエントリにコマンドがあれば優先
 2. **package.json の scripts**：
    - `dev` があれば `npm run dev`（または `yarn dev` / `pnpm dev`）
    - `start` があれば `npm run start`
@@ -104,7 +104,12 @@ npm run dev
 
 ### 7. 履歴の記録
 
-成功したら `.claude/dev-server.yml` に **現在のブランチ名をキー** にして記録する。
+成功したら `~/.claude/projects/<プロジェクトパスをエンコード>/dev-server.yml` に **現在のブランチ名をキー** にして記録する。
+
+**パスのエンコード**: プロジェクトルート（`git rev-parse --show-toplevel`）のパスの `/` を `-` に置換する。
+例: `/Users/tyoshii/github/tyoshii/my-app` → `~/.claude/projects/-Users-tyoshii-github-tyoshii-my-app/dev-server.yml`
+
+ディレクトリが存在しない場合は `mkdir -p` で作成する。
 
 ブランチ名は `git rev-parse --abbrev-ref HEAD` で取得する（worktree でも正しく動作する）。
 
