@@ -1,15 +1,37 @@
 #!/bin/bash
 input=$(cat)
 
-DIR=$(echo "$input" | jq -r '.workspace.current_dir')
+DIR=$(echo "$input" | jq -r '(.cwd // .workspace.current_dir)')
 
 # Git branch
 OUTPUT=""
+BRANCH=""
 if git -C "$DIR" rev-parse --git-dir > /dev/null 2>&1; then
     BRANCH=$(git -C "$DIR" branch --show-current 2>/dev/null)
     GIT_DIR=$(git -C "$DIR" rev-parse --git-dir 2>/dev/null)
+    IS_WORKTREE=false
+
     if [[ "$GIT_DIR" == *".git/worktrees/"* ]]; then
-        OUTPUT="$BRANCH (worktree)"
+        # cwd が worktree を直接指している場合
+        IS_WORKTREE=true
+    else
+        # メインリポジトリにいる場合、.claude/worktrees/ にアクティブな worktree があるかチェック
+        TOPLEVEL=$(git -C "$DIR" rev-parse --show-toplevel 2>/dev/null)
+        WT_BASE="$TOPLEVEL/.claude/worktrees"
+        if [ -d "$WT_BASE" ]; then
+            for wt in $(ls -td "$WT_BASE"/*/ 2>/dev/null); do
+                wt="${wt%/}"
+                if git -C "$wt" rev-parse --git-dir > /dev/null 2>&1; then
+                    BRANCH=$(git -C "$wt" branch --show-current 2>/dev/null)
+                    IS_WORKTREE=true
+                    break
+                fi
+            done
+        fi
+    fi
+
+    if $IS_WORKTREE; then
+        OUTPUT="$BRANCH (wt)"
     else
         OUTPUT="$BRANCH"
     fi
