@@ -14,20 +14,6 @@ if git -C "$DIR" rev-parse --git-dir > /dev/null 2>&1; then
     if [[ "$GIT_DIR" == *".git/worktrees/"* ]]; then
         # cwd が worktree を直接指している場合
         IS_WORKTREE=true
-    else
-        # メインリポジトリにいる場合、.claude/worktrees/ にアクティブな worktree があるかチェック
-        TOPLEVEL=$(git -C "$DIR" rev-parse --show-toplevel 2>/dev/null)
-        WT_BASE="$TOPLEVEL/.claude/worktrees"
-        if [ -d "$WT_BASE" ]; then
-            for wt in $(ls -td "$WT_BASE"/*/ 2>/dev/null); do
-                wt="${wt%/}"
-                if git -C "$wt" rev-parse --git-dir > /dev/null 2>&1; then
-                    BRANCH=$(git -C "$wt" branch --show-current 2>/dev/null)
-                    IS_WORKTREE=true
-                    break
-                fi
-            done
-        fi
     fi
 
     if $IS_WORKTREE; then
