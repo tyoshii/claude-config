@@ -10,6 +10,15 @@
 
 ## 実行手順
 
+### 0. 作業ディレクトリの決定
+
+```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+```
+
+- 以降のすべてのファイル検索（`package.json` 等）とサーバー起動はこのディレクトリで行う
+- worktree 内ではworktree のルートが返されるため、worktree のコードで正しくサーバーが起動する
+
 ### 1. ポート番号の決定
 
 **引数でポート番号が指定された場合**：そのポートを使用する（以下の優先順位をスキップ）。
@@ -94,10 +103,10 @@ fi
 
 ### 6. サーバー起動
 
-バックグラウンドで起動し、ログを出力する：
+`PROJECT_ROOT`（手順 0 で決定）に `cd` してからバックグラウンドで起動する：
 
 ```bash
-npm run dev
+cd $PROJECT_ROOT && npm run dev
 ```
 
 起動後、ポートとプロセス情報をユーザーに報告。
@@ -106,7 +115,14 @@ npm run dev
 
 成功したら `~/.claude/projects/<プロジェクトパスをエンコード>/dev-server.yml` に **現在のブランチ名をキー** にして記録する。
 
-**パスのエンコード**: プロジェクトルート（`git rev-parse --show-toplevel`）のパスの `/` を `-` に置換する。
+**パスのエンコード**: **メインリポジトリのルート**のパスの `/` を `-` に置換する。
+worktree 内で実行された場合も、メインリポジトリのパスを使うことで履歴を共有する。
+
+```bash
+# メインリポジトリのルートを取得（worktree でもメインリポジトリのパスを返す）
+MAIN_REPO=$(git rev-parse --path-format=absolute --git-common-dir | sed 's/\/\.git$//')
+```
+
 例: `/Users/tyoshii/github/tyoshii/my-app` → `~/.claude/projects/-Users-tyoshii-github-tyoshii-my-app/dev-server.yml`
 
 ディレクトリが存在しない場合は `mkdir -p` で作成する。
