@@ -54,7 +54,25 @@ git branch -r --merged main | grep -v -E 'main|master|develop|HEAD' | sed 's|ori
 - 確認後に `git push origin --delete <branch>` で削除
 - リモートの参照を更新：`git fetch --prune`
 
-### 4. コンテキストのリフレッシュ
+### 4. 不要な worktree の削除
+
+```bash
+git worktree list
+```
+
+- メインの作業ディレクトリ以外の worktree が存在する場合、一覧をユーザーに表示する
+- 各 worktree について削除するか確認を取る
+- 削除する場合：
+
+```bash
+git worktree remove <worktree-path>
+```
+
+- ブランチも不要な場合は `git branch -D <branch>` で削除
+- すべての worktree が不要な場合は一括削除を提案する
+- worktree がメインのみの場合はスキップ
+
+### 5. コンテキストのリフレッシュ
 
 プロジェクトの基本情報を読み直す。以下のファイルが存在すれば読む：
 
@@ -62,7 +80,7 @@ git branch -r --merged main | grep -v -E 'main|master|develop|HEAD' | sed 's|ori
 - `.claude/rules` ディレクトリ以下のすべてのファイル
 - `.cursorrules`、`.windsurfrules`（あれば参考程度に）
 
-### 5. 完了報告
+### 6. 完了報告
 
 以下の形式で報告する：
 
@@ -72,6 +90,7 @@ git branch -r --merged main | grep -v -E 'main|master|develop|HEAD' | sed 's|ori
 - ブランチ: main（最新）
 - 削除したローカルブランチ: <一覧 or なし>
 - 削除したリモートブランチ: <一覧 or なし>
+- 削除した worktree: <一覧 or なし>
 - 未コミットの変更: <stash / commit / 破棄 / なし>
 
 準備ができました。次は何をしましょう？
