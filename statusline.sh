@@ -9,14 +9,7 @@ BRANCH=""
 if git -C "$DIR" rev-parse --git-dir > /dev/null 2>&1; then
     BRANCH=$(git -C "$DIR" branch --show-current 2>/dev/null)
     GIT_DIR=$(git -C "$DIR" rev-parse --git-dir 2>/dev/null)
-    IS_WORKTREE=false
-
     if [[ "$GIT_DIR" == *".git/worktrees/"* ]]; then
-        # cwd が worktree を直接指している場合
-        IS_WORKTREE=true
-    fi
-
-    if $IS_WORKTREE; then
         OUTPUT="$BRANCH (wt)"
     else
         OUTPUT="$BRANCH"
