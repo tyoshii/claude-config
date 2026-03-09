@@ -150,7 +150,7 @@ Agent ツール（`subagent_type: general-purpose`）を使い、サブタスク
 1. `git add` で変更ファイルをステージング（機密ファイルを除く）
 2. `/commit` の手順に従ってコミットメッセージを作成・コミット
 3. `git push -u origin <ブランチ名>` でプッシュ
-4. `gh pr create` で PR を作成
+4. `gh pr create --draft` で Draft PR を作成
 
 PR 本文の形式：
 ```markdown
