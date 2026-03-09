@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # claude-config セットアップスクリプト
-# ~/.claude/commands と statusline.sh のシンボリックリンクを作成する
+# ~/.claude/skills と statusline.sh のシンボリックリンクを作成する
 
 set -e
 
@@ -39,8 +39,8 @@ link() {
     echo "Created symlink: $dest -> $src"
 }
 
-# commands ディレクトリ
-link "$SCRIPT_DIR/command" "$HOME/.claude/commands"
+# skills ディレクトリ
+link "$SCRIPT_DIR/skills" "$HOME/.claude/skills"
 
 # statusline.sh
 link "$SCRIPT_DIR/statusline.sh" "$HOME/.claude/statusline.sh"

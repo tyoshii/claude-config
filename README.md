@@ -5,7 +5,7 @@ Claude Code のグローバル設定を Git 管理するためのリポジトリ
 ## 目的
 
 - `~/.claude` を GitHub で一元管理する
-- 複数プロジェクト・複数マシンで共通の command を利用可能にする
+- 複数プロジェクト・複数マシンで共通の skill を利用可能にする
 - repo 側の `.claude` による override を前提とした設計
 
 ## セットアップ
@@ -19,10 +19,10 @@ cd ~/github/tyoshii/claude-config
 ./setup.sh
 ```
 
-セットアップスクリプトは `~/.claude/commands` にシンボリックリンクを作成する。
+セットアップスクリプトは `~/.claude/skills` にシンボリックリンクを作成する。
 
 ```
-~/.claude/commands -> ~/github/tyoshii/claude-config/command
+~/.claude/skills -> ~/github/tyoshii/claude-config/skills
 ```
 
 **注意**: `~/.claude` ディレクトリ全体を置き換えないこと。Claude Code の履歴やキャッシュが失われる。
@@ -34,7 +34,7 @@ Claude Code は以下の優先順位で設定を読み込む：
 1. **repo/.claude** (最優先)
 2. **~/.claude** (グローバル設定 = このリポジトリ)
 
-repo 側に同名の command が存在すれば、そちらが優先される。
+repo 側に同名の skill が存在すれば、そちらが優先される。
 
 ## 想定ユースケース
 
@@ -44,7 +44,7 @@ repo 側に同名の command が存在すれば、そちらが優先される。
 /commit
 ```
 
-どのプロジェクトでも一貫したコミット作法を適用できる。プロジェクト固有のルールが必要な場合は、repo 側の `.claude/command/commit.md` で override する。
+どのプロジェクトでも一貫したコミット作法を適用できる。プロジェクト固有のルールが必要な場合は、repo 側の `.claude/skills/commit/SKILL.md` で override する。
 
 ## ディレクトリ構成
 
@@ -53,24 +53,16 @@ claude-config/
 ├── README.md
 ├── .gitignore
 ├── setup.sh          # セットアップスクリプト
-├── command/          # グローバル command
-│   └── commit.md
+├── skills/           # グローバル skill
+│   ├── commit/
+│   │   └── SKILL.md
+│   ├── pr/
+│   │   └── SKILL.md
+│   └── ...
 ├── config.yml        # 共通設定
 └── docs/
     └── design.md     # 設計思想
 ```
-
-## 将来拡張
-
-現時点の構成は最小限に留めている。以下の拡張を想定：
-
-| フェーズ | 追加要素 | 説明 |
-|---------|---------|------|
-| 現在 | command/ | Markdown ベースの指示文 |
-| 次 | skill/ | 役割ごとに分離した command 群 |
-| 将来 | plugin/ | 外部配布可能なパッケージ形式 |
-
-command → skill → plugin の順で段階的に拡張する想定。現時点では command のみ実装し、過度な抽象化は避ける。
 
 ## 設定ファイル
 
