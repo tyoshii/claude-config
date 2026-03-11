@@ -69,6 +69,18 @@ port: 3000
 mode: hard
 ```
 
+```yaml
+# monorepo 例: packages ごとにポートを設定
+packages:
+  packages/web:
+    port: 3000
+    mode: hard
+  packages/api:
+    port: 8080
+  packages/admin:
+    port_range: [3100, 3110]
+```
+
 **動作ルール**：
 
 - `port` が指定されている場合：そのポートを必ず使う。使用中の場合は soft モードでも別ポートに逃げず、hard モードと同様にプロセス情報を表示してユーザーに確認する
@@ -77,6 +89,44 @@ mode: hard
 - 引数でポート番号や `soft` / `hard` が明示指定された場合は、このファイルの設定より引数が優先される
 - `port` と `port_range` が両方指定されている場合は `port` を優先する
 - このファイルはリポジトリに commit してチームで共有する設定ファイルである。**このファイルに履歴（ブランチ情報・last_used 等）を書き込んではならない**。履歴は従来通り `~/.claude/projects/` 側の `dev-server.yml` にのみ記録する
+
+#### monorepo 対応
+
+`.claude/dev-server.yml` に `packages` キーがある場合、monorepo として扱う。
+
+**yml の構造**：
+- `packages` の各キーは `$PROJECT_ROOT` からの相対パス
+- 各パッケージに `port` / `port_range` / `mode` を個別に設定できる
+- トップレベルの `port` / `mode` と `packages` は併用しない（`packages` がある場合はトップレベルの設定を無視する）
+
+**起動対象の決定**：
+
+1. **カレントディレクトリがパッケージ配下の場合**：そのパッケージのみ起動する
+   - 例: `$PROJECT_ROOT/packages/web/src/` にいる → `packages/web` の設定を使用
+2. **プロジェクトルートにいる場合**：ユーザーにどのパッケージを起動するか確認する。選択肢として `packages` に定義された全パッケージを提示し、「すべて起動」も選べるようにする
+3. **引数でパッケージ名を指定された場合**（例: `/dev-server web`）：該当パッケージを起動する。パッケージ名は `packages` キーの末尾部分でマッチする（`web` → `packages/web`）
+
+**複数パッケージの同時起動**：
+- 「すべて起動」が選ばれた場合、`packages` の全エントリを順に起動する
+- 各パッケージの起動は手順 2〜6 を個別に実行する（ポート確認・起動・記録をパッケージごとに行う）
+- 起動コマンドは各パッケージの `package.json` を参照して決定する（`$PROJECT_ROOT/<パッケージパス>/package.json`）
+- 起動時の `cd` 先は `$PROJECT_ROOT/<パッケージパス>` とする
+
+**履歴の記録**（monorepo の場合）：
+- `~/.claude/projects/` 側の `dev-server.yml` にパッケージパスも含めて記録する：
+
+```yaml
+branches:
+  main:
+    packages/web:
+      port: 3000
+      command: npm run dev
+      last_used: 2024-01-20
+    packages/api:
+      port: 8080
+      command: npm run dev
+      last_used: 2024-01-20
+```
 
 ### 2. ポート使用状況の確認
 
@@ -166,7 +216,10 @@ fi
 
 ### 6. サーバー起動
 
-`PROJECT_ROOT`（手順 0 で決定）に `cd` してからバックグラウンドで起動する。
+起動ディレクトリに `cd` してからバックグラウンドで起動する。
+
+- 通常プロジェクト：`$PROJECT_ROOT`
+- monorepo：`$PROJECT_ROOT/<パッケージパス>`（例: `$PROJECT_ROOT/packages/web`）
 
 **必ず `PORT` 環境変数をコマンドの先頭に付けてポートを明示する**（デフォルトポートの場合でも省略しない）：
 
