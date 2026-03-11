@@ -44,37 +44,6 @@ if git -C "$WORK_DIR" rev-parse --git-dir >/dev/null 2>&1; then
   fi
 fi
 
-# ── Active dev server ports ──────────────────────────────────────
-ACTIVE_PORTS=""
-if git -C "$WORK_DIR" rev-parse --git-dir >/dev/null 2>&1; then
-  MAIN_REPO=$(git -C "$WORK_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null | sed 's/\/\.git$//')
-  if [ -n "$MAIN_REPO" ]; then
-    ENCODED_PATH=$(echo "$MAIN_REPO" | sed 's/\//-/g')
-    DEV_SERVER_YML="$HOME/.claude/projects/${ENCODED_PATH}/dev-server.yml"
-    if [ -f "$DEV_SERVER_YML" ]; then
-      # Parse branch:port pairs from YAML and check if port is alive
-      CURRENT_BRANCH=""
-      CURRENT_PORT=""
-      while IFS= read -r line; do
-        # Match branch line (e.g. "  main:" or "  team/firebase-auth:")
-        if echo "$line" | grep -qE '^  [^ ].*:$'; then
-          CURRENT_BRANCH=$(echo "$line" | sed 's/^  //;s/:$//')
-        fi
-        # Match port line (e.g. "    port: 8085")
-        if echo "$line" | grep -qE '^    port:'; then
-          CURRENT_PORT=$(echo "$line" | awk '{print $2}')
-          if [ -n "$CURRENT_PORT" ] && lsof -i :"$CURRENT_PORT" -t >/dev/null 2>&1; then
-            if [ -n "$ACTIVE_PORTS" ]; then
-              ACTIVE_PORTS+=", "
-            fi
-            ACTIVE_PORTS+="${CURRENT_BRANCH}→:${CURRENT_PORT}"
-          fi
-        fi
-      done < "$DEV_SERVER_YML"
-    fi
-  fi
-fi
-
 # ── Rate limit usage (cached) ───────────────────────────────────
 CACHE_FILE="/tmp/claude-usage-cache.json"
 CACHE_TTL=360
@@ -190,24 +159,14 @@ if [ -n "$GIT_BRANCH" ]; then
   fi
 fi
 
-# Line 2: Active dev server ports
-LINE2=""
-if [ -n "$ACTIVE_PORTS" ]; then
-  LINE2="\xF0\x9F\x96\xA5\xEF\xB8\x8F  ${C_LABEL}${ACTIVE_PORTS}${C_RESET}"
-fi
-
-# Line 3: 5-hour rate limit
+# Line 2: 5-hour rate limit
 FIVE_COLOR=$(color_for_pct "$FIVE_HOUR_PCT")
 FIVE_BAR=$(progress_bar "$FIVE_HOUR_PCT" "$FIVE_COLOR")
-LINE3="\xE2\x8F\xB1\xEF\xB8\x8F ${FIVE_COLOR}5h${C_RESET}  ${FIVE_BAR}  ${FIVE_COLOR}${FIVE_HOUR_PCT}%${C_RESET}  ${C_LABEL}Resets ${FIVE_RESET_STR} (Asia/Tokyo)${C_RESET}"
+LINE2="\xE2\x8F\xB1\xEF\xB8\x8F ${FIVE_COLOR}5h${C_RESET}  ${FIVE_BAR}  ${FIVE_COLOR}${FIVE_HOUR_PCT}%${C_RESET}  ${C_LABEL}Resets ${FIVE_RESET_STR} (Asia/Tokyo)${C_RESET}"
 
-# Line 4: 7-day rate limit
+# Line 3: 7-day rate limit
 SEVEN_COLOR=$(color_for_pct "$SEVEN_DAY_PCT")
 SEVEN_BAR=$(progress_bar "$SEVEN_DAY_PCT" "$SEVEN_COLOR")
-LINE4="\xF0\x9F\x97\x93\xEF\xB8\x8F ${SEVEN_COLOR}7d${C_RESET}  ${SEVEN_BAR}  ${SEVEN_COLOR}${SEVEN_DAY_PCT}%${C_RESET}  ${C_LABEL}Resets ${SEVEN_RESET_STR} (Asia/Tokyo)${C_RESET}"
+LINE3="\xF0\x9F\x97\x93\xEF\xB8\x8F ${SEVEN_COLOR}7d${C_RESET}  ${SEVEN_BAR}  ${SEVEN_COLOR}${SEVEN_DAY_PCT}%${C_RESET}  ${C_LABEL}Resets ${SEVEN_RESET_STR} (Asia/Tokyo)${C_RESET}"
 
-if [ -n "$LINE2" ]; then
-  printf "%b\n%b\n%b\n%b\n" "$LINE1" "$LINE2" "$LINE3" "$LINE4"
-else
-  printf "%b\n%b\n%b\n" "$LINE1" "$LINE3" "$LINE4"
-fi
+printf "%b\n%b\n%b\n" "$LINE1" "$LINE2" "$LINE3"

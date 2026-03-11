@@ -124,11 +124,20 @@ fi
 
 ### 6. サーバー起動
 
-`PROJECT_ROOT`（手順 0 で決定）に `cd` してからバックグラウンドで起動する：
+`PROJECT_ROOT`（手順 0 で決定）に `cd` してからバックグラウンドで起動する。
+
+**必ず `PORT` 環境変数をコマンドの先頭に付けてポートを明示する**（デフォルトポートの場合でも省略しない）：
 
 ```bash
-cd $PROJECT_ROOT && npm run dev
+cd $PROJECT_ROOT && PORT=3333 npm run dev
 ```
+
+フレームワークによっては `PORT` 環境変数を読まないものがある。その場合は CLI オプションでもポートを指定する：
+
+- Next.js: `PORT=3333 npm run dev -- -p 3333`
+- Vite: `PORT=3333 npm run dev -- --port 3333`
+- Angular: `PORT=4200 npm run serve -- --port 4200`
+- その他: `PORT=3333 npm run dev`（多くのフレームワークは `PORT` 環境変数を尊重する）
 
 起動後、ポートとプロセス情報をユーザーに報告。
 
