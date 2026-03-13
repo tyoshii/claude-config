@@ -162,17 +162,20 @@ gh api repos/<owner>/<repo>/pulls/<PR番号>/reviews \
 引数に `merge` が指定されている場合、PR を作成（または既存 PR を確認）した後にマージを実行する。
 
 ```bash
-gh pr merge --merge --delete-branch
+gh pr merge --merge --delete-branch --auto
 ```
 
 - `--merge` でマージコミットを作成する（squash や rebase ではない）
 - `--delete-branch` でマージ後にリモート・ローカルのブランチを自動削除する
-- マージ後、メインブランチに切り替える：
+- `--auto` で CI 等のチェックが未完了の場合は自動マージを予約する（チェック通過済みなら即マージ）
+- 即マージされた場合はメインブランチに切り替える：
 
 ```bash
 git checkout <メインブランチ>
 git pull
 ```
+
+- auto-merge が予約された場合はその旨を報告し、ブランチ切り替えはしない
 
 ### 9. 結果の報告
 
