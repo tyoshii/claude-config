@@ -21,6 +21,7 @@ csp events create [options] 予定作成（下書き状態）
   --location, --end-at, --meeting-at, --meeting-location,
   --dismissal-at, --dismissal-location, --tag-ids
 csp events update <eventId> [options]  予定更新（指定フィールドのみ）
+csp events delete <eventId>            予定削除（ソフトデリート）
 csp events publish <eventId>           予定公開（子ども自動登録、保護者に通知）
 
 csp children list           自分の子ども一覧（名前・学年・タグ）
