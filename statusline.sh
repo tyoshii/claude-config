@@ -22,12 +22,19 @@ WORK_DIR=$(echo "$INPUT" | jq -r '
 
 # ── Git info ─────────────────────────────────────────────────────
 GIT_BRANCH=""
+GIT_REPO=""
 GIT_ADDS=0
 GIT_DELS=0
 IS_WORKTREE=false
 
 if git -C "$WORK_DIR" rev-parse --git-dir >/dev/null 2>&1; then
   GIT_BRANCH=$(git -C "$WORK_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+
+  # Get repository name from the top-level directory
+  GIT_TOPLEVEL=$(git -C "$WORK_DIR" rev-parse --show-toplevel 2>/dev/null || echo "")
+  if [ -n "$GIT_TOPLEVEL" ]; then
+    GIT_REPO=$(basename "$GIT_TOPLEVEL")
+  fi
 
   # Detect worktree: git-dir differs from git-common-dir in a worktree
   GIT_DIR=$(git -C "$WORK_DIR" rev-parse --git-dir 2>/dev/null || echo "")
@@ -152,10 +159,14 @@ SEP="${C_GRAY} │ ${C_RESET}"
 CTX_COLOR=$(color_for_pct "$CONTEXT_PCT")
 LINE1="\xF0\x9F\xA4\x96 ${MODEL_NAME}${SEP}${CTX_COLOR}\xF0\x9F\x93\x8A ${CONTEXT_PCT}%${C_RESET}${SEP}\xE2\x9C\x8F\xEF\xB8\x8F  ${C_GREEN}+${GIT_ADDS}${C_RESET}${C_GRAY}/${C_RESET}${C_RED}-${GIT_DELS}${C_RESET}"
 if [ -n "$GIT_BRANCH" ]; then
+  GIT_DISPLAY="${GIT_BRANCH}"
+  if [ -n "$GIT_REPO" ]; then
+    GIT_DISPLAY="${C_LABEL}${GIT_REPO}${C_RESET}${C_GRAY}:${C_RESET}${GIT_BRANCH}"
+  fi
   if [ "$IS_WORKTREE" = true ]; then
-    LINE1+="${SEP}\xF0\x9F\x8C\xB3 ${C_YELLOW}[worktree]${C_RESET} ${GIT_BRANCH}"
+    LINE1+="${SEP}\xF0\x9F\x8C\xB3 ${C_YELLOW}[worktree]${C_RESET} ${GIT_DISPLAY}"
   else
-    LINE1+="${SEP}\xF0\x9F\x94\x80 ${GIT_BRANCH}"
+    LINE1+="${SEP}\xF0\x9F\x94\x80 ${GIT_DISPLAY}"
   fi
 fi
 
