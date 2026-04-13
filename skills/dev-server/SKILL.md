@@ -144,13 +144,25 @@ lsof -i :PORT -t
 **ステップ 1: プロセス情報による軽量判定**
 
 ```bash
-lsof -i :PORT -t | xargs -I{} ps -p {} -o pid,command=
+# プロセスの PID を取得
+PIDS=$(lsof -i :PORT -t)
+
+# 各 PID のコマンドラインを取得
+echo "$PIDS" | xargs -I{} ps -p {} -o pid,command=
+
+# 各 PID の作業ディレクトリ (cwd) を取得
+REAL_PROJECT_ROOT=$(realpath "$PROJECT_ROOT")
+for PID in $PIDS; do
+  CWD=$(lsof -a -p $PID -d cwd -Fn 2>/dev/null | grep '^n' | sed 's/^n//')
+  echo "PID $PID cwd: $CWD"
+done
 ```
 
 以下の順で判定する（いずれかに該当した時点で判定完了）：
 
-1. **コマンドラインにプロジェクトパスが含まれる**: `ps` の出力に `$PROJECT_ROOT` の **`realpath` で正規化したパス** が含まれていれば「該当プロジェクトのサービス」と判定
-2. **YML 記録との一致**: `dev-server.yml` の現在ブランチの `port` が使用中のポートと一致し、かつプロセスのコマンドが記録された `command` と一致すれば「該当プロジェクトのサービス」と判定
+1. **プロセスの作業ディレクトリ (cwd) がプロジェクト配下**: `lsof -a -p PID -d cwd -Fn` で取得した cwd が `$PROJECT_ROOT`（`realpath` で正規化）と一致、またはそのサブディレクトリであれば「該当プロジェクトのサービス」と判定。**これが最も信頼性の高い判定方法**
+2. **コマンドラインにプロジェクトパスが含まれる**: `ps` の出力に `$PROJECT_ROOT` の **`realpath` で正規化したパス** が含まれていれば「該当プロジェクトのサービス」と判定
+3. **YML 記録との一致**: `dev-server.yml` の現在ブランチの `port` が使用中のポートと一致し、かつプロセスのコマンドが記録された `command` と一致すれば「該当プロジェクトのサービス」と判定
 
 上記で判定できなかった場合、ステップ 2 に進む。
 
