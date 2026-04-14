@@ -33,7 +33,17 @@ git checkout main
 git pull origin main
 ```
 
-### 3. マージ済みブランチの削除
+### 3. リモート情報の更新
+
+マージ済みブランチを判定する前に、リモートの最新状態を取得する：
+
+```bash
+git fetch --prune
+```
+
+これにより、リモートで既に削除されたブランチの参照がローカルからも除去される。
+
+### 4. マージ済みブランチの削除
 
 #### ローカルブランチ
 
@@ -52,9 +62,8 @@ git branch -r --merged main | grep -v -E 'main|master|develop|HEAD' | sed 's|ori
 
 - 該当ブランチの一覧をユーザーに表示し、削除してよいか確認する
 - 確認後に `git push origin --delete <branch>` で削除
-- リモートの参照を更新：`git fetch --prune`
 
-### 4. 不要な worktree の削除
+### 5. 不要な worktree の削除
 
 ```bash
 git worktree list
@@ -72,7 +81,7 @@ git worktree remove <worktree-path>
 - すべての worktree が不要な場合は一括削除を提案する
 - worktree がメインのみの場合はスキップ
 
-### 5. コンテキストのリフレッシュ
+### 6. コンテキストのリフレッシュ
 
 プロジェクトの基本情報を読み直す。以下のファイルが存在すれば読む：
 
@@ -80,7 +89,7 @@ git worktree remove <worktree-path>
 - `.claude/rules` ディレクトリ以下のすべてのファイル
 - `.cursorrules`、`.windsurfrules`（あれば参考程度に）
 
-### 6. 完了報告
+### 7. 完了報告
 
 以下の形式で報告する：
 
