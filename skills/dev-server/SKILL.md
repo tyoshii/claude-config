@@ -150,11 +150,14 @@ PIDS=$(lsof -i :PORT -t)
 # 各 PID のコマンドラインを取得
 echo "$PIDS" | xargs -I{} ps -p {} -o pid,command=
 
-# 各 PID の作業ディレクトリ (cwd) を取得
+# 各 PID の作業ディレクトリ (cwd) を取得し、プロジェクト配下か判定
 REAL_PROJECT_ROOT=$(realpath "$PROJECT_ROOT")
 for PID in $PIDS; do
   CWD=$(lsof -a -p $PID -d cwd -Fn 2>/dev/null | grep '^n' | sed 's/^n//')
-  echo "PID $PID cwd: $CWD"
+  case "$CWD" in
+    "$REAL_PROJECT_ROOT"|"$REAL_PROJECT_ROOT"/*) echo "PID $PID cwd: $CWD (プロジェクト配下)" ;;
+    *) echo "PID $PID cwd: $CWD (プロジェクト外)" ;;
+  esac
 done
 ```
 
