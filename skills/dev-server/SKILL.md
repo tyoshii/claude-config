@@ -272,9 +272,12 @@ fi
 - 通常プロジェクト：`$PROJECT_ROOT`
 - monorepo：`$PROJECT_ROOT/<パッケージパス>`（例: `$PROJECT_ROOT/packages/web`）
 
+**必ず Bash ツールの `run_in_background: true` パラメータを使ってバックグラウンドで起動すること。** フォアグラウンドで実行するとタイムアウトしてサーバーが停止するため、絶対にフォアグラウンドで実行してはならない。
+
 **必ず `PORT` 環境変数をコマンドの先頭に付けてポートを明示する**（デフォルトポートの場合でも省略しない）：
 
 ```bash
+# run_in_background: true で実行すること
 cd $PROJECT_ROOT && PORT=3333 npm run dev
 ```
 
