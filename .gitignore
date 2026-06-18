@@ -19,3 +19,10 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# 外部リポジトリへのシンボリックリンクで管理されるスキル
+skills/kawaraban
+skills/refine
+
+# 他リポジトリで管理中のスキル（将来取り込む可能性あり）
+skills/nlc
