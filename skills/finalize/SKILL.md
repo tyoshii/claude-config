@@ -1,16 +1,21 @@
 # /finalize [effort]
 
 チーム開発で実装完了後に品質チェック→改善→最終チェック→PR 作成を一連で行う。
-`/code-review` → `/refine` → `/code-review`（最終）→ `/pr` の流れを自動で回し、
-最終レビュー結果を PR コメントに記載する。
+バグ点検（レビューサブエージェント）→ `/refine` → バグ点検（最終）→ `/pr` の
+流れを自動で回し、最終レビュー結果を PR コメントに記載する。
 
-致命的な問題が見つかった場合は修正→refine→code-review をループし、
+致命的な問題が見つかった場合は修正→refine→バグ点検をループし、
 品質が確保されてから PR を作成する。
+
+> **注**: 組み込みの `/code-review` は `disable-model-invocation` が設定されて
+> おり、スキル内から Skill ツールで起動できない（起動すると
+> `Error: Skill code-review cannot be used with Skill tool` になる）。
+> そのためバグ点検は Agent ツールで起動するレビューサブエージェントで行う。
 
 ## 引数
 
-- `effort` : `/code-review` のレビュー強度（`low` / `medium` / `high` / `max`）。
-  省略時は `medium`。
+- `effort` : バグ点検のレビュー強度（`low` / `medium` / `high` / `max`）。
+  省略時は `medium`。強度ごとの挙動はステップ 2 を参照。
 
 ## 前提
 
@@ -44,13 +49,55 @@ git log --oneline origin/main..HEAD
     ユーザーに「メインブランチ上で実行中。`/pr` が作業ブランチを自動生成します」
     と一言伝えてから進む
 
-### 2. code-review（1回目）— 初期点検
+### 2. バグ点検（1回目）— 初期点検
 
-`/code-review <effort>` を実行する（`effort` は引数。省略時 `medium`）。
+レビュー対象は「リモートのデフォルトブランチとの差分 + 未コミットの変更
+（未追跡ファイル含む）」。まず範囲を確認する：
 
-`--fix` は付けない。`/code-review` の指摘は **bug findings（動作の正しさに関わる
-バグ）** と **cleanup findings（再利用・簡素化・効率の改善）** の 2 系統で出る。
-これに沿って扱いを分岐する：
+```bash
+git diff origin/main --stat   # origin/main はデフォルトブランチ名に読み替え
+git status --short
+```
+
+Agent ツールでレビューサブエージェントを起動する。`effort` に応じて構成を変える：
+
+- `low` / `medium` → 1 エージェント（`low` は差分中心の速い点検、`medium` は
+  周辺コードの Read も行う念入りな点検）
+- `high` → 2 エージェント並列（A: 正確性・エッジケース / B: セキュリティ・
+  並行処理・後方互換性）
+- `max` → `high` の 2 エージェントに加え、出た指摘ごとに「反証を試みる」検証
+  エージェントを起動し、反証された指摘は捨てる
+
+サブエージェントへのプロンプト（骨子。並列時は観点を分担させる）：
+
+```
+## 役割
+あなたは厳密なコードレビュアーとして、差分にバグや不具合を探します。
+
+## 手順
+1. `git diff origin/<デフォルトブランチ>` で差分を取得（未追跡ファイルは Read で確認）
+2. 周辺コードを Read してロジックの前提を確認
+3. 以下を厳密にチェック:
+   - null / undefined / 空配列の扱い、off-by-one、境界条件
+   - エラーハンドリング漏れ、例外の握りつぶし
+   - 非同期処理の競合状態、await 漏れ
+   - 型の取り違え、暗黙の型変換
+   - リソースリーク、後方互換性の破壊
+   - セキュリティ（インジェクション、認可漏れ）
+4. 上記のバグとは別に、再利用・簡素化・効率の改善点も気づいたら報告する
+
+## 出力（JSON）
+{"findings": [{"file": "...", "line": 42, "severity": "bug" | "cleanup",
+  "description": "...", "suggestion": "..."}]}
+
+## ルール
+- 確信度が低い指摘は含めない（false positive を厳しく排除）
+- スタイル指摘は対象外。ファイルの編集はしない
+```
+
+指摘は **bug findings（`severity: bug` — 動作の正しさに関わるバグ）** と
+**cleanup findings（`severity: cleanup` — 再利用・簡素化・効率の改善）** の
+2 系統で扱う。これに沿って分岐する：
 
 - **cleanup findings のみ** → Claude が自動でコードに反映し、反映内容を簡潔に
   報告する。ステップ 3 へ
@@ -69,9 +116,10 @@ git log --oneline origin/main..HEAD
   ユーザーに一言知らせる
 - `/refine` がスキップした指摘があれば控えておく（完了報告で再掲する）
 
-### 4. code-review（2回目）— 最終チェック
+### 4. バグ点検（2回目）— 最終チェック
 
-再度 `/code-review <effort>` を実行する。
+ステップ 2 と同じ手順（同じ `effort` 構成・同じプロンプト）でレビュー
+サブエージェントを再度実行する。
 
 **ここがこのスキルの核心。** refine 後の最終品質を確認する。
 
@@ -84,7 +132,7 @@ git log --oneline origin/main..HEAD
 - **bug findings が 1 件でもある場合**（致命的な問題）：
   - bug findings の一覧をユーザーに提示する
   - Claude が指摘に沿って修正を反映する
-  - **ステップ 3 に戻る**（refine → code-review のループ）
+  - **ステップ 3 に戻る**（refine → バグ点検のループ）
   - 同じループが **3 回** に達しても bug findings が残る場合は止めて、
     残りの指摘をユーザーに報告し判断を委ねる。ユーザーがこのまま進めると
     判断した場合はステップ 5 へ
@@ -97,7 +145,7 @@ git log --oneline origin/main..HEAD
 
 ### 6. 最終レビュー結果を PR コメントに記載
 
-ステップ 4 の最終 code-review の結果を PR コメントとして投稿する。
+ステップ 4 の最終バグ点検の結果を PR コメントとして投稿する。
 
 ```bash
 gh pr comment <PR番号> --body "<レビューコメント>"
@@ -114,7 +162,7 @@ gh pr comment <PR番号> --body "<レビューコメント>"
 <指摘なし: ✅ 問題なし / 指摘あり: 指摘の要約>
 
 ### 詳細
-<code-review の指摘内容をそのまま記載。cleanup の自動修正内容も含める>
+<バグ点検の指摘内容をそのまま記載。cleanup の自動修正内容も含める>
 
 ### refine サマリ
 <refine で行った改善の要約>
@@ -132,9 +180,9 @@ gh pr comment <PR番号> --body "<レビューコメント>"
 ```
 ## finalize 完了
 
-- code-review (1回目, <effort>): <指摘なし / cleanup 自動修正 / bug あり修正済み>
+- バグ点検 (1回目, <effort>): <指摘なし / cleanup 自動修正 / bug あり修正済み>
 - refine: <修正あり（概要） / 変更なし>
-- code-review (2回目, <effort>): <指摘なし / cleanup のみ / bug あり → ループN回>
+- バグ点検 (2回目, <effort>): <指摘なし / cleanup のみ / bug あり → ループN回>
 - PR: <PR URL>
 - レビューコメント: PR に投稿済み
 
@@ -152,7 +200,7 @@ gh pr comment <PR番号> --body "<レビューコメント>"
 - bug findings でループが発生した場合、最大 3 回まで
 - このスキルが直接 push・PR 操作を行うことはなく、すべて配下のスキルに委譲する
 - `/ship` との違い: `/ship` は vibe coding 向けで auto-merge まで行う。
-  `/finalize` はチーム開発向けで、2 回目の code-review 結果を PR コメントに
+  `/finalize` はチーム開発向けで、2 回目のバグ点検結果を PR コメントに
   残し、チームメンバーがレビューしやすくする
 
 ## 失敗時の扱い
