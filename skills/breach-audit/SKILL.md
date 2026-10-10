@@ -35,6 +35,7 @@ description: 既存リポジトリに情報漏えい・侵害につながるリ�
    `git status --short` を確認する。未コミット変更があっても監査は続ける（作業ツリーを監査対象とする）。
 2. 作業ディレクトリを決める: `WORK=<scratchpad>/breach-audit/<repo名>`（scratchpad が無ければ
    `${TMPDIR:-/tmp}/breach-audit/<repo名>`）。中間ファイルはすべてここに置き、**リポジトリ内には書かない**。
+   `mkdir -p "$WORK/agents"` で作っておく（エージェントの出力先）。
 
 ### 2. 棚卸し
 
@@ -47,6 +48,7 @@ node "$SKILL_DIR/scripts/inventory.mjs" "<repo-root>" > "$WORK/inventory.json"
 `trivy` が無い場合は「入れると精度が上がる」と一言添える（インストールはしない）。
 
 inventory の `actions.findings` や `sensitiveFiles` は**正規表現による候補**であり、そのまま指摘にしない。
+
 
 ### 3. 並列監査
 
@@ -63,7 +65,19 @@ Agent ツール（`subagent_type: general-purpose`）で、depth に応じたカ
 | E | **コードの脆弱性**（インジェクション・SSRF・XSS・デシリアライズ・暗号誤用 等） | E |
 | F | 個人情報保護・インフラ/クラウド/BaaS 設定 | F |
 
-各エージェントへのプロンプトには以下をすべて含める（`{}` は埋める）:
+**主担当の決まり（重複指摘を防ぐ）**: 同じ穴を複数カテゴリが別々に指摘しないよう、次の観点は主担当だけが
+finding にする。主担当でないエージェントは、気づいても finding にせず `related` に一行で書くだけにする。
+
+| 観点 | 主担当 |
+|---|---|
+| エンドポイント/ルートの認証・認可の欠如、トークン/シークレットの比較方法、OAuth の state | D |
+| 外部入力が危険な sink に届く問題、エラー応答での内部情報の露出 | E |
+| 環境変数・`.env`・設定ファイル中のシークレット（未使用の残骸も含む） | C |
+| Dependabot / Renovate / 依存の自動更新・alerts | A |
+| ブランチ保護・secret scanning など GitHub の設定、Workflow | B |
+| 本番/開発の環境分離、ストレージ公開設定、セキュリティヘッダ、監査ログ | F |
+
+各エージェントへのプロンプトには以下をすべて含める（`{}` は埋める。主担当の表もそのまま貼る）:
 
 ```
 あなたはリポジトリ {repo-root} のセキュリティ監査担当（カテゴリ {X}: {名前}）です。
@@ -72,28 +86,36 @@ Agent ツール（`subagent_type: general-purpose`）で、depth に応じたカ
 1. {SKILL_DIR}/references/checklist.md の「{X}.」の節を読み、全項目を順に調べる。
 2. 棚卸し結果 {WORK}/inventory.json を参照する（候補は真偽を自分で確認すること）。
 3. 外部スキャナの出力は {WORK}/ 以下に保存する。リポジトリ内には何も書かない。
+4. 次の「主担当」の表で自カテゴリ以外が主担当の観点は finding にせず、related に一行で書く。
+   {主担当の表}
 
 厳守:
 - 読み取り専用。ファイル編集・git 操作（commit/checkout/stash 等）・パッケージの install・
   アプリ/テストの起動・本番/ステージング URL へのリクエストは禁止。
-  許可される外部通信は、脆弱性 DB の照会（npm audit / osv / gh api 等）だけ。
+  許可される外部通信は、脆弱性 DB の照会（npm audit / osv / gh api の GET 等）だけ。
+  例外として、最終結果の JSON を {WORK}/agents/{X}.json に書き出すことだけは許可する。
 - シークレット値は先頭 4 文字 + **** でマスクし、全文を出力しない。
 - 推測で指摘しない。各指摘に file:line と、その行を読んで確認した根拠を付ける。
   確認しきれないものは confidence: low として出し、何が未確認かを書く。
 - 「対策済み」と確認できた項目も passed に短く挙げる（何を見て対策済みと判断したか）。
 - 調べられなかった項目（権限不足・ツール無し・対象なし）は skipped に理由付きで挙げる。
+- JSON の文字列には生の文字を書く。&gt; &lt; &amp; などの HTML エンティティにしない。
+- 深刻度は Critical / High / Medium / Low / Info のいずれか（advisory の moderate は Medium）。
 
-最終出力は次の JSON のみ:
+最終結果は次の形の JSON を {WORK}/agents/{X}.json に書き出し、返答は「書き出したパスと件数」だけにする:
 {"category":"{X}","findings":[{"id":"{X}-連番","checklist":"A1 等","severity":"Critical|High|Medium|Low|Info",
-"confidence":"high|medium|low","title":"一行要約","location":"path:line（複数可）",
+"confidence":"high|medium|low","title":"一行要約","location":"path:line（複数可、カンマ区切り）",
 "evidence":"何を読んで何が問題と判断したか","impact":"悪用されると何が漏れる/起きるか",
 "exploit_precondition":"攻撃に必要な前提（未認証で可能か、社内のみか 等）",
 "fix":"具体的な修正方針","effort":"S|M|L"}],
-"passed":["..."],"skipped":["..."]}
+"vulnerablePackages":[{"name","version","fixed","advisory","severity","direct":true,"scope":"本番|dev","reachable":"根拠付き"}],
+"passed":["..."],"skipped":["..."],"related":["他カテゴリ主担当の気づき（path:line と一行）"]}
+（vulnerablePackages はカテゴリ A のみ）
 ```
 
 D・E は対象が大きいと 1 体で読み切れない。`deep` のときや、ルート/ハンドラが概ね 50 を超えるときは、
-ディレクトリ（例: `packages/api` と `packages/web`）や機能単位で 2 体に分け、担当範囲をプロンプトで明示する。
+ディレクトリ（例: `packages/api` と `packages/web`）や機能単位で 2 体に分け、担当範囲をプロンプトで明示する
+（出力は `agents/D1.json`・`agents/D2.json` のように分け、id も `D1-1` のように重複させない）。
 
 **深刻度の基準**（エージェントにも同じ基準で付けさせる）:
 - **Critical**: 外部の攻撃者が今すぐ悪用でき、個人情報の大量取得・任意コード実行・本番の認証情報奪取につながる
@@ -102,54 +124,64 @@ D・E は対象が大きいと 1 体で読み切れない。`deep` のときや�
 - **Low**: 衛生面・ベストプラクティスからの逸脱
 - **Info**: 参考情報・検知/運用面の改善余地
 
-### 4. 検証（反証）
+### 4. 統合（重複の整理）
 
-全エージェントの結果を集め、同じ根本原因の重複をまとめる。
+全エージェントが終わったら、重複候補を出す:
 
-- `quick`: Critical/High の該当箇所を自分で読み直して確認する。
-- `standard`: Critical/High をまとめて 1 体の検証エージェントに渡す。
-- `deep`: Critical/High を 1 件ずつ並列の検証エージェントに渡す。
+```bash
+node "$SKILL_DIR/scripts/merge-results.mjs" "$WORK" --candidates
+```
+
+同じファイルの近い行を指す、カテゴリ違いの指摘ペアが表示される。同じ根本原因なら主担当の表に従って
+残す側（keep）を決め、`$WORK/summary.json` の `merges` に書く（形式は `$SKILL_DIR/assets/results-schema.md`）。
+各エージェントの `related` も読み、主担当側が見落としているものがあれば自分で該当行を確認して扱いを決める。
+
+### 5. 検証（反証）
+
+統合後に残る Critical/High（と、連鎖すると High 以上になる Medium）を検証にかける。
+
+- `quick`: 該当箇所を自分で読み直して確認し、結果を `$WORK/verify.json` に書く。
+- `standard`: まとめて 1 体の検証エージェントに渡す。
+- `deep`: 1 件ずつ並列の検証エージェントに渡し、結果を 1 つの配列にまとめる。
 
 検証エージェントへのプロンプト要旨:
 
 ```
 以下の指摘が誤検知である可能性を本気で探してください（読み取り専用・同じ禁止事項）。
 上流のミドルウェア/バリデーション/フレームワークの自動エスケープ/ORM のパラメータ化/
-ネットワーク境界（社内限定・認証プロキシ配下）/dev 依存のみ/到達不能コード/テスト用ダミー値 など、
-悪用を妨げる要因が無いかを実際のコードで確認し、各指摘に
-{"id","verdict":"confirmed|downgraded|false_positive","severity":"見直し後","reason":"根拠 file:line"} を返す。
+ネットワーク境界（社内限定・認証プロキシ配下）/dev 依存のみ/到達不能コード/テスト用ダミー値/
+前提条件の不成立（advisory の影響条件、外部サービスの設定）など、悪用を妨げる要因が無いかを
+実際のコードとドキュメントで確認する。JSON の文字列に HTML エンティティを使わない。
+結果を {WORK}/verify.json に次の配列で書き出し、返答はパスと件数だけにする:
+[{"id","verdict":"confirmed|downgraded|false_positive","severity":"見直し後","reason":"根拠 file:line"}]
 ```
 
-`false_positive` は本編から外し、付録に「除外した候補」として理由付きで残す。
-`downgraded` は見直し後の深刻度を採用する。
+`false_positive` は統合時に本編から外れ、付録の「除外した候補」に理由付きで残る。
+`downgraded` は見直し後の深刻度が採用され、元の深刻度も記録される。
 
-### 5. レポート
+### 6. レポート（HTML + Markdown）
 
-`$SKILL_DIR/assets/report-template.md` の構成で、`$WORK/report.md` に書き出す。
-**脆弱性の詳細を含むので、リポジトリ内に保存・コミットしない。** 共有先（Issue・Slack・PR 等）へは、
-ユーザーの明示的な指示があるときだけ出す。public リポジトリの Issue には絶対に書かない。
-
-### 6. HTML で表示
-
-調査の詳細をブラウザで読めるよう、HTML レポートを生成して開く。
-
-1. 監査・検証の結果を `$SKILL_DIR/assets/results-schema.md` の形式で `$WORK/results.json` に書く
-   （エージェントの JSON を統合し、検証の verdict・格下げ・除外を反映したもの。report.md と同じ内容）。
-2. 生成して開く:
+1. `$WORK/summary.json` に `meta`・`summary`（overview と topActions）・`notCovered`・`merges` を書く。
+   overview には「最も危ない経路（入口 → 何が漏れるか）」を必ず一文入れる。topActions は 3〜5 件。
+2. 統合して results.json を作り、レポートを生成して開く:
    ```bash
-   node "$SKILL_DIR/scripts/render-report.mjs" "$WORK/results.json" "$WORK/report.html"
+   node "$SKILL_DIR/scripts/merge-results.mjs" "$WORK"
+   node "$SKILL_DIR/scripts/render-report.mjs" "$WORK/results.json" "$WORK"
    open "$WORK/report.html"   # macOS。Linux は xdg-open
    ```
 
 HTML は外部リソースを読まない単一ファイルで、深刻度タイルでの絞り込み・キーワード検索・
-カテゴリ別の状況・指摘ごとの詳細（根拠/影響/修正方針）・パッケージ脆弱性表を表示する。
-**Artifact・kawaraban 等での公開や共有 URL の発行はしない**（脆弱性情報のため）。ユーザーが明示的に
-求めた場合も、private であることと共有範囲を確認してからにする。
+カテゴリ別の状況・指摘ごとの詳細（根拠/影響/修正方針/検証結果）・パッケージ脆弱性表を表示する。
+同じ内容の `report.md` も出力される。
+
+**脆弱性の詳細を含むので、リポジトリ内に保存・コミットしない。** Artifact・kawaraban 等での公開や
+共有 URL の発行もしない。共有先（Issue・Slack・PR 等）へは、ユーザーの明示的な指示があるときだけ出し、
+その場合も private であることと共有範囲を確認する。public リポジトリの Issue には絶対に書かない。
 
 チャットでは次だけを返す:
-1. 深刻度別の件数と、Critical/High の一覧（1 件 1〜2 行: 何が・どこで・何が漏れるか）
+1. 深刻度別の件数と、Critical/High の一覧（1 件 1〜2 行: 何が・どこで・何が漏れるか）。検証で格下げしたものはその旨
 2. 「今日やるべきこと」上位 3〜5 件
-3. HTML レポートと report.md のパス
+3. report.html と report.md のパス
 
 ### 7. 次のアクションの提案
 

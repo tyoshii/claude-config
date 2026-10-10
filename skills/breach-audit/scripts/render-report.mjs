@@ -1,15 +1,16 @@
 #!/usr/bin/env node
-// breach-audit の結果 JSON を、外部リソースに依存しない単一 HTML に変換する。
+// breach-audit の結果 JSON から、外部リソースに依存しない単一 HTML と Markdown のレポートを作る。
 //
-// Usage: node render-report.mjs <results.json> <out.html>
+// Usage: node render-report.mjs <results.json> <out-dir>   → <out-dir>/report.html, <out-dir>/report.md
 // 入力スキーマは assets/results-schema.md を参照。
-// 指摘本文はすべて textContent で描画する（コード片や攻撃文字列を含むため innerHTML に入れない）。
+// HTML の指摘本文はすべて textContent で描画する（コード片や攻撃文字列を含むため innerHTML に入れない）。
 
 import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
-const [input, output] = process.argv.slice(2);
-if (!input || !output) {
-  console.error("Usage: node render-report.mjs <results.json> <out.html>");
+const [input, outDir] = process.argv.slice(2);
+if (!input || !outDir) {
+  console.error("Usage: node render-report.mjs <results.json> <out-dir>");
   process.exit(1);
 }
 
@@ -292,5 +293,82 @@ ul.plain li { margin: 3px 0; }
 </html>
 `;
 
-writeFileSync(output, html);
-console.log(output);
+// ---------- Markdown ----------
+const SEV = ["Critical", "High", "Medium", "Low", "Info"];
+const cell = (s) => String(s ?? "").replace(/\|/g, "\\|").replace(/\n+/g, " ");
+const m = data.meta;
+const sevCount = SEV.map((s) => data.findings.filter((f) => f.severity === s).length);
+const list = (items, fmt) => (items.length ? items.map((x) => `- ${fmt(x)}`).join("\n") : "- なし");
+const catText = (x) => (typeof x === "string" ? x : `${x.category ? `[${x.category}] ` : ""}${x.text ?? ""}`);
+const md = [
+  `# セキュリティ監査レポート: ${m.repo ?? ""}`,
+  "",
+  ...[
+    m.date && `- 実施日: ${m.date}`,
+    (m.remote || m.commit) && `- 対象: ${[m.remote, m.commit && String(m.commit).slice(0, 10)].filter(Boolean).join(" @ ")}${m.dirty ? "（未コミット変更あり）" : ""}`,
+    m.depth && `- depth: ${m.depth}`,
+    m.tools?.length && `- 使用スキャナ: ${m.tools.join(", ")}`,
+  ].filter(Boolean),
+  "- **このレポートは脆弱性の詳細を含む。リポジトリにコミットせず、共有範囲を限定すること。**",
+  "",
+  "## サマリー",
+  "",
+  `| ${SEV.join(" | ")} |`,
+  `|${SEV.map(() => "---:").join("|")}|`,
+  `| ${sevCount.join(" | ")} |`,
+  "",
+  data.summary.overview ?? "",
+  "",
+  "### 今日やるべきこと",
+  "",
+  ...(data.summary.topActions ?? []).map((a, i) => `${i + 1}. ${a.id ? `${a.id}: ` : ""}${a.action ?? ""}${a.reason ? `（${a.reason}）` : ""}`),
+  "",
+  "## 調べていない範囲",
+  "",
+  list([...data.notCovered, ...data.skipped], catText),
+  "",
+  "## 指摘一覧",
+  "",
+  "| ID | 深刻度 | 確度 | 概要 | 場所 | 工数 |",
+  "|----|--------|------|------|------|------|",
+  ...data.findings.map((f) => `| ${f.id} | ${f.severity} | ${f.confidence ?? ""} | ${cell(f.title)} | \`${cell(f.location)}\` | ${f.effort ?? ""} |`),
+  "",
+  "## 指摘の詳細",
+  "",
+  ...data.findings.flatMap((f) => [
+    `### ${f.id}: ${f.title}`,
+    "",
+    `- **深刻度 / 確度**: ${f.severity} / ${f.confidence ?? ""}${f.verdict ? `（検証: ${f.verdict}${f.originalSeverity ? `、元 ${f.originalSeverity}` : ""}）` : ""}`,
+    `- **場所**: \`${f.location ?? ""}\``,
+    `- **根拠**: ${f.evidence ?? ""}`,
+    `- **影響**: ${f.impact ?? ""}`,
+    `- **悪用の前提**: ${f.exploit_precondition ?? ""}`,
+    `- **修正方針**: ${f.fix ?? ""}`,
+    ...(f.verifyReason ? [`- **検証の根拠**: ${f.verifyReason}`] : []),
+    "",
+  ]),
+  "## パッケージの既知脆弱性",
+  "",
+  ...(data.vulnerablePackages.length
+    ? [
+        "| パッケージ | 現行版 | 修正版 | Advisory | 重大度 | 直接/間接 | 本番/dev | 到達性 |",
+        "|---|---|---|---|---|---|---|---|",
+        ...data.vulnerablePackages.map((p) =>
+          `| ${cell(p.name)} | ${cell(p.version)} | ${cell(p.fixed)} | ${cell(p.advisory)} | ${p.severity ?? ""} | ${p.direct ? "直接" : "間接"} | ${cell(p.scope)} | ${cell(p.reachable)} |`),
+      ]
+    : ["検出なし"]),
+  "",
+  "## 対策済みと確認できた項目",
+  "",
+  list(data.passed, catText),
+  "",
+  "## 付録: 除外した候補（誤検知）",
+  "",
+  list(data.falsePositives, (x) => `${x.title ?? ""}${x.reason ? ` — ${x.reason}` : ""}`),
+  "",
+].join("\n");
+
+writeFileSync(join(outDir, "report.html"), html);
+writeFileSync(join(outDir, "report.md"), md);
+console.log(join(outDir, "report.html"));
+console.log(join(outDir, "report.md"));
