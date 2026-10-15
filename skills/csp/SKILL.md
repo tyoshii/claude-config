@@ -24,6 +24,17 @@ csp events update <eventId> [options]  予定更新（指定フィールドの�
 csp events delete <eventId>            予定削除（ソフトデリート）
 csp events publish <eventId>           予定公開（子ども自動登録、保護者に通知）
 
+csp newsletters list                   お知らせ一覧（管理者は下書き・宛先も）
+csp newsletters get <id>               お知らせ詳細
+csp newsletters create --title ... [options]   お知らせ作成（既定は下書き）
+  --body "Markdown" | --body-file x.md, --tags <tagId,...>,
+  --tag-grades "tagId:grade_4|grade_5", --children <childId,...>,
+  --pinned, --publish [--push]
+csp newsletters update <id> [同上] [--all（全員宛てに戻す）] [--unpin]
+  宛先（--tags/--tag-grades/--children）はどれか 1 つでも付けると全量置き換え
+csp newsletters publish <id> [--push]  公開（--push を付けたときだけプッシュ通知）
+csp newsletters delete <id>            削除（元に戻せない）
+
 csp children list           自分の子ども一覧（名前・学年・タグ）
 csp tags list               タグ一覧（ラベル・色・カテゴリ・ID）
 
@@ -51,4 +62,7 @@ csp responses submit <eventId> --child-id <id> --answer <qId>=yes|maybe|no [--no
 - `csp events publish` は保護者全員に通知が届く。必ず実行前に確認を取る
 - 回答送信（`csp responses submit`）も確認を取ってから実行する
 - 予定作成は下書き状態で作られるので、確認なしで実行してよい
+- お知らせの `--push`（create/update の `--publish --push`、`publish --push`）は宛先の保護者のアプリに通知が届く。必ず実行前に確認を取る
+- お知らせの `delete` は元に戻せない（既読・リアクションも消える）。実行前に確認を取る
+- お知らせの本文は Markdown（見出し・箇条書き・太字・リンク）。生の HTML は表示されない
 - ID の解決は自動で行い、ユーザーに UUID を見せる必要はない
