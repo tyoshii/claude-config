@@ -7,12 +7,26 @@
 
 ## 目次
 
+- [モバイルアプリのバックエンドを見るとき（A2B 攻撃）](#モバイルアプリのバックエンドを見るときa2b-攻撃)
 - [A. 依存関係・サプライチェーン](#a-依存関係サプライチェーン)
 - [B. CI/CD・GitHub リポジトリ設定](#b-cicdgithub-リポジトリ設定)
 - [C. シークレット露出・AI エージェント設定](#c-シークレット露出ai-エージェント設定)
 - [D. 認証・セッション・認可](#d-認証セッション認可)
 - [E. インジェクション・入力処理（コード脆弱性）](#e-インジェクション入力処理コード脆弱性)
 - [F. 個人情報保護・インフラ/クラウド設定](#f-個人情報保護インフラクラウド設定)
+
+## モバイルアプリのバックエンドを見るとき（A2B 攻撃）
+
+公開されたアプリ（APK / IPA / JS バンドル）は解析され、API のエンドポイント・パラメータ・ヘッダ名・
+API キーは攻撃者に知られている前提で見る（2026-10 NICT 注意喚起「A2B 攻撃」）。
+「アプリからしか呼ばれない」「ID が推測困難」「エンドポイントが非公開」は緩和策として数えない。
+
+- D・E の担当は、ルーティング定義に加えて**アプリ側の API クライアント**（`fetch`/`axios` のラッパ、
+  GraphQL の operation、RPC の呼び出し名、認証ヘッダを付ける箇所）も読み、アプリが叩く全エンドポイントを
+  入口として扱う。モノレポでアプリとバックエンドが同居していれば両方読む
+- 注意喚起の 6 観点との対応: 認可不備 → D9・D10・D11・D13・D17 / 認証・セッション → D1・D4・D16 /
+  SQL・NoSQL インジェクション → E1・E2 / SSRF → E5 / 設定不備（ストレージ・ログ・WAF）→ F1・F3・F13・F16 /
+  コード実行・ファイル操作 → E3・E4・E6・E9
 
 ---
 
@@ -130,6 +144,7 @@ git grep -nIiE '(password|passwd|secret|api[_-]?key|access[_-]?token|private[_-]
 | D6 | パスワードリセット/メール変更 | トークンの推測可能性・有効期限・一回限りか、Host ヘッダからリセット URL を組み立てていないか、メール変更時に再認証するか | High |
 | D7 | ユーザー列挙 | ログイン/登録/リセットのレスポンスやタイミングでアカウント有無が分かる | Low〜Medium |
 | D8 | OAuth / OIDC / SSO | `state` 検証、`redirect_uri` の完全一致、PKCE、ID トークンの `aud`/`iss` 検証、メールアドレスだけでのアカウント紐付け | High |
+| D16 | **認証の単層依存（ゲートウェイ任せ）** | API Gateway の authorizer / リバースプロキシ / BFF だけでトークンを検証し、バックエンドは `decode` した claims を信頼していないか。authorizer を通らない経路（認証不要ルート配下へのルーティング変更、別ステージ・別デプロイ、パス正規化の差、Lambda の直接 URL）があれば成りすましが成立する。authorizer が対象アプリ（audience・製品/テナント）を絞っているか（共通認証基盤の他製品ユーザーで通らないか。受け取って未使用の設定値は要注意） | 迂回経路あり: Critical、多層化していないだけ: Medium |
 
 ### 認可・アクセス制御（OWASP A01 / API1, API3, API5）
 
@@ -137,10 +152,12 @@ git grep -nIiE '(password|passwd|secret|api[_-]?key|access[_-]?token|private[_-]
 |----|------|--------|-------------|
 | D9 | **IDOR / BOLA** | `/users/:id`、`/orders/:id`、`?userId=` のように ID を受け取るハンドラで、取得したリソースの所有者が**ログインユーザーと照合されているか**。クエリに `where userId = currentUser.id` 相当があるか | 個人情報が取れるなら Critical |
 | D10 | 機能レベル認可の欠如 | 管理用 API・内部 API・バッチ起動 API に認証/ロール確認があるか。認証ミドルウェアの適用漏れ（ルーター単位で付けていて一部だけ外れている等） | Critical〜High |
-| D11 | マスアサインメント | リクエストボディをそのまま ORM の create/update に渡していないか（`role`・`isAdmin`・`ownerId`・`price` を上書きできる） | High |
+| D11 | マスアサインメント | リクエストボディをそのまま ORM の create/update に渡していないか（`role`・`isAdmin`・`ownerId`・`price` を上書きできる）。所有者チェックはあっても、更新操作（push / patch / operation）の中身が無検証で `id`・`userId`・`disabled` などサーバー管理のフィールドを書き換えられないか | High |
+| D17 | **本人の識別子をクライアントから受け取る** | 認証済みの claims（`req.user.id`・`claims.user_id`・`session.userId`）ではなく、body/query の `userId`・`ownerId`・`idToken`・`email` を所有者として保存・照会に使っていないか。claims との一致検証があるか | 他人名義で作成・閲覧できるなら High〜Critical |
 | D12 | **過剰なデータ返却** | ユーザーオブジェクト丸ごと返却（パスワードハッシュ、メール、電話、住所、内部フラグ）。一覧 API で他人の PII。GraphQL のフィールド単位認可・introspection・クエリ深さ制限 | High |
 | D13 | マルチテナント分離 | テナント ID の条件漏れ、RLS（Supabase/Postgres）未設定、Firebase Rules の `allow read, write: if true` / `if request.auth != null` だけ | Critical |
 | D14 | 列挙・大量取得 | 連番 ID、ページングの上限なし（`limit=100000`）、エクスポート API のレート制限なし | Medium〜High |
+| D18 | **認証不要 API の棚卸し** | 匿名で呼べるルート（`/anonymous`・`/public`・`authorize: () => true`・authorizer 対象外のパス）を全件列挙し、それぞれ何を返すか確認する。招待コード・クーポン・予約番号・引換コードなど「知っていれば使える」コードで個人・組織情報（氏名・所属先・状態）を返していないか。コードの桁数と D1 のレート制限の有無を組み合わせて総当たりの現実性を書く。`@TODO 認証必須にする` のようなコメントも根拠にする | 個人情報が取れるなら High、組織名・状態のみなら Medium |
 | D15 | CSRF | Cookie 認証で状態変更 API に CSRF 対策（SameSite / トークン / Origin 検証）があるか | Medium |
 
 ---
@@ -153,7 +170,7 @@ git grep -nIiE '(password|passwd|secret|api[_-]?key|access[_-]?token|private[_-]
 | ID | 観点 (CWE) | sink の探し方（例） | 深刻度の目安 |
 |----|-----------|---------------------|-------------|
 | E1 | **SQL インジェクション** (CWE-89) | 文字列連結/テンプレートで組んだ SQL: `query(\`...${`、`raw(`、`$queryRawUnsafe`、`sequelize.query(`、`knex.raw(`、`execute(f"`、`.extra(`、`cursor.execute(.*%` | Critical |
-| E2 | NoSQL インジェクション (CWE-943) | リクエストボディを Mongo の filter にそのまま（`{ $ne: null }` が通る）、`$where` | High |
+| E2 | NoSQL インジェクション (CWE-943) | リクエストボディを Mongo の filter にそのまま（`{ $ne: null }` が通る）、`$where`。**型の実行時検証が無いパラメータ**に注意: TypeScript の型注釈は実行時に効かないので、`params.code` が string 前提でもオブジェクトを送れば演算子として解釈される。RPC 風の custom query/command・GraphQL の JSON scalar・`req.body` を `findOne({ where: { code } })` に入れる箇所で `typeof === 'string'` やスキーマ検証（zod 等）があるか。認証不要 API（D18）上なら優先度を上げる | High |
 | E3 | **OS コマンドインジェクション** (CWE-78) | `exec(`、`execSync(`、`spawn(.*shell: true`、`child_process`、`os.system`、`subprocess.*shell=True`、バッククォート | Critical |
 | E4 | コード実行 / 安全でないデシリアライズ (CWE-94, 502) | `eval(`、`new Function(`、`vm.run`、`pickle.loads`、`yaml.load(`（SafeLoader 無し）、`Marshal.load`、`ObjectInputStream`、`node-serialize` | Critical |
 | E5 | **SSRF** (CWE-918) | ユーザー指定 URL への `fetch`/`axios`/`requests.get`。Webhook URL 登録、画像 URL 取り込み、PDF 生成（HTML 内の外部参照）。メタデータ IP `169.254.169.254` や内部ホストへの到達を防いでいるか | High（クラウド認証情報窃取） |
@@ -182,7 +199,7 @@ git grep -nIiE '(password|passwd|secret|api[_-]?key|access[_-]?token|private[_-]
 
 | ID | 観点 | 調べ方 | 深刻度の目安 |
 |----|------|--------|-------------|
-| F1 | **PII のログ出力** | `console.log(user)`、`logger.info(req.body)`、リクエスト/レスポンス全体のロギングミドルウェア、Sentry/Datadog 等への PII 送信（`sendDefaultPii`、`beforeSend` でのマスク有無） | High |
+| F1 | **PII・認証情報のログ出力** | `console.log(user)`、`logger.info(req.body)`、リクエスト/レスポンス全体のロギングミドルウェア（**headers ごと出すと Authorization / ID トークンが残る**）、authorizer が検証済み claims（email 等）をログ出力、API Gateway の `dataTraceEnabled: true`・ALB/CloudFront のボディログ、Sentry/Datadog 等への PII 送信（`sendDefaultPii`、`beforeSend` でのマスク有無） | High |
 | F2 | 本人確認書類・機微情報の保存 | 免許証/保険証画像、マイナンバー、医療情報、決済情報の保存先・暗号化・アクセス制御・保存期間 | 公開状態なら Critical |
 | F3 | **ストレージの公開設定** | S3/GCS/Azure Blob/Firebase Storage の public ACL、`BlockPublicAccess` 無効、`allUsers` 権限、署名付き URL の有効期限が長すぎる、推測可能なオブジェクトキー | Critical |
 | F4 | 保存時暗号化・バックアップ | DB/ストレージ/スナップショットの暗号化、バックアップの公開・別アカウント共有 | Medium |
@@ -201,4 +218,5 @@ git grep -nIiE '(password|passwd|secret|api[_-]?key|access[_-]?token|private[_-]
 | F12 | Kubernetes | `privileged: true`、`hostNetwork`、Secret を平文 ConfigMap に、RBAC の `*`、NetworkPolicy 無し | Medium〜High |
 | F13 | BaaS ルール | Firebase/Firestore/Storage Rules、Supabase RLS と `anon` キーの権限、Hasura の権限設定 | Critical（全件取得されうる） |
 | F14 | 環境分離 | 本番と開発でキー/DB を共有、本番データを開発環境にコピー、ステージングが公開されていて本番データを持つ | High |
+| F16 | **API のレート制限・WAF** | WAF（AWS WAF / Cloud Armor / Cloudflare 等）の IaC にレートベースルールがあるか。マネージドルール（CommonRuleSet 等）だけでは総当たり・連打は防げない。認証不要 API（D18）やログイン系（D1）に厳しめの閾値があるか。API Gateway の usage plan / throttling | 認証不要 API にも無し: Medium、他に穴が無ければ Low |
 | F15 | 監視・検知 | 認証失敗・大量取得・権限変更の監査ログ/アラートがあるか（漏えいに**気づける**か） | Info〜Medium |

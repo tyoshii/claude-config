@@ -128,6 +128,11 @@ ul.plain li { margin: 3px 0; }
   <h2>今日やるべきこと</h2>
   <div class="panel"><ol class="actions" id="actions"></ol></div>
 
+  <section id="adv" hidden>
+    <h2 id="adv-h">注意喚起との対応</h2>
+    <div class="panel tbl-wrap"><table class="cov" id="adv-t"></table><div id="adv-ioc"></div></div>
+  </section>
+
   <h2>カテゴリ別の状況</h2>
   <div class="panel tbl-wrap"><table class="cov" id="cov"></table></div>
 
@@ -215,6 +220,22 @@ ul.plain li { margin: 3px 0; }
     $("actions").append(el("li", {}, af ? stBadge(af) : "", af ? " " : "",
       a.id ? el("a", { className: "fid", href: "#f-" + a.id }, a.id) : "", a.id ? " " : "",
       a.action || "", a.reason ? el("div", { className: "why" }, a.reason) : ""));
+  }
+
+  // advisory（注意喚起を起点にした点検のときだけ）
+  const adv = D.summary.advisory;
+  if (adv && (adv.viewpoints || []).length) {
+    $("adv").hidden = false;
+    $("adv-h").textContent = "注意喚起との対応: " + (adv.title || "");
+    if (adv.url) $("adv-h").after(el("div", { className: "meta" }, adv.url));
+    $("adv-t").append(el("tr", {}, ["観点", "判定", "該当する指摘"].map((h) => el("th", {}, h))));
+    for (const v of adv.viewpoints) {
+      const ids = v.ids || [];
+      $("adv-t").append(el("tr", {}, el("td", {}, v.name || ""), el("td", {}, v.verdict || ""),
+        el("td", {}, ids.length ? ids.flatMap((id, i) => [i ? " " : "", el("a", { className: "fid", href: "#f-" + id }, id)]) : "—")));
+    }
+    if ((adv.ioc || []).length) $("adv-ioc").append(el("p", {}, "公開 IoC（ログ突合用）: ", ...adv.ioc.flatMap((x, i) => [i ? " " : "", el("code", {}, x)]),
+      adv.iocNote ? el("div", { className: "why" }, adv.iocNote) : ""));
   }
 
   // coverage
@@ -327,6 +348,19 @@ const stLabel = (x) => STATUS[stOf(x)];
 const resLine = (r) => [r.date, r.note, r.ref].filter(Boolean).join(" / ");
 const openHi = data.findings.filter((f) => ["Critical", "High"].includes(f.severity) && ["open", "in_progress"].includes(stOf(f))).length;
 const catText = (x) => (typeof x === "string" ? x : `${x.category ? `[${x.category}] ` : ""}${x.text ?? ""}`);
+function advisoryMd(adv) {
+  if (!adv?.viewpoints?.length) return [];
+  return [
+    `## 注意喚起との対応: ${adv.title ?? ""}`,
+    "",
+    ...(adv.url ? [adv.url, ""] : []),
+    "| 観点 | 判定 | 該当する指摘 |",
+    "|------|------|------|",
+    ...adv.viewpoints.map((v) => `| ${cell(v.name)} | ${cell(v.verdict)} | ${(v.ids ?? []).join(", ") || "—"} |`),
+    "",
+    ...(adv.ioc?.length ? [`公開 IoC（ログ突合用）: ${adv.ioc.map((x) => `\`${x}\``).join(", ")}${adv.iocNote ? `（${adv.iocNote}）` : ""}`, ""] : []),
+  ];
+}
 const md = [
   `# セキュリティ監査レポート: ${m.repo ?? ""}`,
   "",
@@ -353,6 +387,7 @@ const md = [
   "",
   ...(data.summary.topActions ?? []).map((a, i) => `${i + 1}. ${a.id ? `[${stLabel(data.findings.find((f) => f.id === a.id))}] ${a.id}: ` : ""}${a.action ?? ""}${a.reason ? `（${a.reason}）` : ""}`),
   "",
+  ...advisoryMd(data.summary.advisory),
   "## 調べていない範囲",
   "",
   list([...data.notCovered, ...data.skipped], catText),

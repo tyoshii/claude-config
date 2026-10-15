@@ -31,7 +31,17 @@ $WORK/
     "overview": "全体所見 3〜5 行。最も危ない経路（入口 → 何が漏れるか）を一文で含める",
     "topActions": [
       { "id": "A-1", "action": "やること", "reason": "理由" }
-    ]
+    ],
+    "advisory": {                         // 任意。注意喚起（NICT・JPCERT・IPA 等）を起点に点検したときだけ書く
+      "title": "NICT A2B 攻撃 注意喚起 Rev1.1",
+      "url": "https://...",
+      "viewpoints": [                     // 注意喚起が挙げる観点を全部並べる。該当なしも「問題なし」で残す
+        { "name": "認可不備（IDOR / BOLA）", "verdict": "要修正", "ids": ["D-1", "D-2"] },
+        { "name": "SSRF", "verdict": "問題なし", "ids": [] }
+      ],
+      "ioc": ["198.51.100.1"],            // 注意喚起に載っている IoC（IP・UA・ハッシュ等）。そのまま転記
+      "iocNote": "注意喚起の観測開始以降の API Gateway / WAF ログと突合"
+    }
   },
   "notCovered": ["リポジトリから判断できない範囲（コンソール設定のクラウド権限 等）"],
   "merges": [
