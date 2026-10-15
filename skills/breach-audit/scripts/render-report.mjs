@@ -58,6 +58,10 @@ h2 { font-size: 19px; margin: 40px 0 12px; padding-bottom: 6px; border-bottom: 1
 .tile[aria-pressed="false"] { opacity: .45; }
 .tile .n { font-size: 30px; font-weight: 700; color: var(--c); line-height: 1.1; font-variant-numeric: tabular-nums; }
 .tile .l { font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: .04em; }
+.tile .n small { font-size: 14px; color: var(--muted); font-weight: 600; margin-left: 4px; }
+.tile .d { font-size: 12px; color: var(--ok); font-weight: 700; margin-top: 2px; min-height: 1.2em; }
+.burn { flex-basis: 100%; display: flex; align-items: center; gap: 10px; }
+.burn .bar { flex: 1; height: 10px; }
 .overview { margin-top: 16px; white-space: pre-wrap; }
 ol.actions { margin: 0; padding-left: 22px; }
 ol.actions li { margin: 6px 0; }
@@ -198,16 +202,23 @@ ul.plain li { margin: 3px 0; }
     m.tools && m.tools.length && "スキャナ " + m.tools.join(", "),
   ].filter(Boolean).map((t) => el("span", {}, t)));
 
-  // severity tiles = フィルタ
+  // severity tiles = フィルタ。数字は残件（未対応 + 対応中）で、対応が進むほど減る
   const active = new Set(SEV);
+  const isLeft = (f) => stOf(f) === "open" || stOf(f) === "in_progress";
   for (const s of SEV) {
-    const n = findings.filter((f) => f.severity === s).length;
-    const b = el("button", { className: "tile", type: "button", style: sevVars(s), "aria-pressed": "true", title: "クリックで表示切替" },
-      el("div", { className: "n" }, n), el("div", { className: "l" }, s.toUpperCase()));
+    const fs = findings.filter((f) => f.severity === s);
+    const left = fs.filter(isLeft).length, done = fs.length - left;
+    const b = el("button", { className: "tile", type: "button", style: fs.length && !left ? "--c: var(--ok)" : sevVars(s), "aria-pressed": "true", title: "残件 / 総数（クリックで表示切替）" },
+      el("div", { className: "n" }, left, done ? el("small", {}, "/ " + fs.length) : ""), el("div", { className: "l" }, s.toUpperCase()),
+      el("div", { className: "d" }, done ? (left ? "−" + done + " 解消" : "✓ すべて解消") : ""));
     b.onclick = () => { active.has(s) ? active.delete(s) : active.add(s); b.setAttribute("aria-pressed", active.has(s)); render(); };
     $("tiles").append(b);
   }
   const stCount = (st) => findings.filter((f) => stOf(f) === st).length;
+  const resolved = findings.length - findings.filter(isLeft).length;
+  const pct = findings.length ? Math.round((resolved / findings.length) * 100) : 0;
+  $("progress").append(el("div", { className: "burn" }, el("b", {}, "解消 " + resolved + " / " + findings.length + " 件（" + pct + "%）"),
+    el("div", { className: "bar" }, el("span", { style: "flex:" + resolved + ";background:var(--ok)" }), el("span", { style: "flex:" + (findings.length - resolved) }))));
   $("progress").append(el("b", {}, "対応状況"), ...Object.keys(STATUS).map((st) => el("span", {}, stBadge({ resolution: { status: st } }), " " + stCount(st))));
   const openHi = findings.filter((f) => (f.severity === "Critical" || f.severity === "High") && (stOf(f) === "open" || stOf(f) === "in_progress")).length;
   $("progress").append(el("span", { className: openHi ? "open-hi" : "" }, "Critical/High の残り " + openHi + " 件"));
@@ -340,13 +351,20 @@ ul.plain li { margin: 3px 0; }
 const SEV = ["Critical", "High", "Medium", "Low", "Info"];
 const cell = (s) => String(s ?? "").replace(/\|/g, "\\|").replace(/\n+/g, " ");
 const m = data.meta;
-const sevCount = SEV.map((s) => data.findings.filter((f) => f.severity === s).length);
-const list = (items, fmt) => (items.length ? items.map((x) => `- ${fmt(x)}`).join("\n") : "- なし");
 const STATUS = { open: "未対応", in_progress: "対応中", fixed: "対応済み", accepted: "リスク受容" };
 const stOf = (x) => (STATUS[x?.resolution?.status] ? x.resolution.status : "open");
+const isLeft = (f) => ["open", "in_progress"].includes(stOf(f));
+// 残件（未対応 + 対応中）。解消済みがあれば「残件 / 総数」で表す
+const sevCount = SEV.map((s) => {
+  const fs = data.findings.filter((f) => f.severity === s);
+  const left = fs.filter(isLeft).length;
+  return left === fs.length ? `${left}` : `${left} / ${fs.length}`;
+});
+const resolved = data.findings.filter((f) => !isLeft(f)).length;
+const list = (items, fmt) => (items.length ? items.map((x) => `- ${fmt(x)}`).join("\n") : "- なし");
 const stLabel = (x) => STATUS[stOf(x)];
 const resLine = (r) => [r.date, r.note, r.ref].filter(Boolean).join(" / ");
-const openHi = data.findings.filter((f) => ["Critical", "High"].includes(f.severity) && ["open", "in_progress"].includes(stOf(f))).length;
+const openHi = data.findings.filter((f) => ["Critical", "High"].includes(f.severity) && isLeft(f)).length;
 const catText = (x) => (typeof x === "string" ? x : `${x.category ? `[${x.category}] ` : ""}${x.text ?? ""}`);
 function advisoryMd(adv) {
   if (!adv?.viewpoints?.length) return [];
@@ -375,11 +393,13 @@ const md = [
   "",
   "## サマリー",
   "",
+  "残件（未対応 + 対応中）。解消が進むと「残件 / 総数」になる。",
+  "",
   `| ${SEV.join(" | ")} |`,
   `|${SEV.map(() => "---:").join("|")}|`,
   `| ${sevCount.join(" | ")} |`,
   "",
-  `対応状況: ${Object.keys(STATUS).map((st) => `${STATUS[st]} ${data.findings.filter((f) => stOf(f) === st).length}`).join(" / ")}（Critical/High の残り ${openHi} 件）`,
+  `解消 ${resolved} / ${data.findings.length} 件（${data.findings.length ? Math.round((resolved / data.findings.length) * 100) : 0}%）。対応状況: ${Object.keys(STATUS).map((st) => `${STATUS[st]} ${data.findings.filter((f) => stOf(f) === st).length}`).join(" / ")}（Critical/High の残り ${openHi} 件）`,
   "",
   data.summary.overview ?? "",
   "",
