@@ -6,6 +6,7 @@ $WORK/
 ├── agents/<X>.json       各監査エージェントの出力（SKILL.md 手順 3 の形式）
 ├── verify.json           検証エージェントの出力
 ├── summary.json          メインが書く（下記）
+├── status.json           監査後の対応状況。対応のたびにメインが更新する（下記）
 ├── results.json          scripts/merge-results.mjs が生成 → render-report.mjs の入力
 ├── report.html           scripts/render-report.mjs が生成
 └── report.md             同上
@@ -42,6 +43,27 @@ $WORK/
 }
 ```
 
+## status.json（対応のたびにメインが更新する）
+
+```jsonc
+{
+  "updated": "2026-10-15",                // 最後に更新した日。レポートに「対応状況の更新」として表示
+  "findings": {
+    "C-1": { "status": "fixed", "note": "鍵を失効・ローテーションし .env を削除", "ref": "https://github.com/owner/repo/pull/12", "date": "2026-10-15" },
+    "D-2": { "status": "in_progress", "ref": "owner/repo#34" },
+    "F-1": { "status": "accepted", "note": "社内ネットワーク限定のため受容（〇〇さん判断）", "date": "2026-10-16" },
+    "E-3": { "status": "false_positive", "note": "上流のミドルウェアで検証済み src/mw.ts:20" }
+  },
+  "packages": {                           // vulnerablePackages の name をキーにする
+    "next": { "status": "fixed", "ref": "owner/repo#35", "date": "2026-10-15" }
+  }
+}
+```
+
+- `status`: `open`（未対応。エントリが無ければこれ）/ `in_progress`（対応中）/ `fixed`（対応済み）/ `accepted`（リスク受容）/ `false_positive`（対応中に誤検知と判明）
+- `false_positive` は本編から外し、`falsePositives` に移す
+- merges で drop した id を書いても、keep 側の指摘に反映される
+
 ## verify.json（検証エージェントが書く）
 
 ```json
@@ -52,7 +74,7 @@ $WORK/
 
 ```jsonc
 {
-  "meta": { ... },                        // summary.json から
+  "meta": { ... },                        // summary.json から。status.json の updated があれば meta.updated に入る
   "summary": { ... },                     // summary.json から
   "notCovered": [ ... ],                  // summary.json から
   "findings": [
@@ -65,7 +87,8 @@ $WORK/
       "mergedFrom": ["E-2"],              // merges で統合した id
       "title": "...", "location": "path:line, path:line",
       "evidence": "...", "impact": "...", "exploit_precondition": "...",
-      "fix": "...", "effort": "S"
+      "fix": "...", "effort": "S",
+      "resolution": { "status": "fixed", "note": "...", "ref": "...", "date": "..." }   // status.json から（無ければ未対応）
     }
   ],
   "vulnerablePackages": [

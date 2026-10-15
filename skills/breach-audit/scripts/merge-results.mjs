@@ -9,6 +9,7 @@
 //   agents/<X>.json   各カテゴリのエージェント出力（必須。コードフェンス付きでも可）
 //   verify.json       検証エージェントの出力 [{id, verdict, severity, reason}]（任意）
 //   summary.json      メインが書く {meta, summary, notCovered, merges:[{keep, drop:[...]}]}（任意）
+//   status.json       監査後の対応状況 {updated, findings:{<id>:{status,note,ref,date}}, packages:{<name>:{...}}}（任意）
 //
 // 正規化: HTML エンティティのデコード、深刻度表記の統一（critical→Critical, moderate→Medium）、
 // passed/skipped の文字列を {category, text} に、merges の統合、verdict の反映（false_positive は除外欄へ）。
@@ -143,11 +144,37 @@ for (const v of Array.isArray(verify) ? verify : verify.results ?? []) {
   }
 }
 
+// 対応状況（status.json）の反映。監査後に対応が進むたびにメインが更新し、merge → render をやり直す
+const STATUS = ["open", "in_progress", "fixed", "accepted", "false_positive"];
+const status = existsSync(join(work, "status.json")) ? readJson(join(work, "status.json")) : {};
+const resolution = (key, s) => {
+  if (!STATUS.includes(s.status)) throw new Error(`status.json の status が不正: ${key}: ${s.status}（${STATUS.join(" / ")}）`);
+  return { status: s.status, note: s.note, ref: s.ref, date: s.date };
+};
+for (const [id, s] of Object.entries(status.findings ?? {})) {
+  const f = findings.find((x) => x.id === id) ?? findings.find((x) => x.mergedFrom?.includes(id));
+  if (!f) {
+    console.error(`注意: status.json の ${id} に対応する指摘がない（verify で除外済み？）`);
+    continue;
+  }
+  if (s.status === "false_positive") {
+    falsePositives.push({ title: `${f.id}: ${f.title}`, reason: `対応時に誤検知と判明${s.date ? `（${s.date}）` : ""}: ${s.note ?? ""}` });
+    findings = findings.filter((x) => x !== f);
+    continue;
+  }
+  f.resolution = resolution(id, s);
+}
+for (const [name, s] of Object.entries(status.packages ?? {})) {
+  const hits = vulnerablePackages.filter((p) => p.name === name);
+  if (!hits.length) console.error(`注意: status.json の packages.${name} に対応するパッケージがない`);
+  for (const p of hits) p.resolution = resolution(name, s);
+}
+
 findings.sort((a, b) => rank(a.severity) - rank(b.severity) || String(a.id).localeCompare(String(b.id)));
 vulnerablePackages.sort((a, b) => rank(a.severity) - rank(b.severity) || (a.scope === "dev") - (b.scope === "dev"));
 
 const results = {
-  meta: summary.meta ?? {},
+  meta: { ...(summary.meta ?? {}), ...(status.updated ? { updated: status.updated } : {}) },
   summary: summary.summary ?? {},
   notCovered: summary.notCovered ?? [],
   findings,
@@ -159,5 +186,6 @@ const results = {
 writeFileSync(join(work, "results.json"), JSON.stringify(results, null, 2));
 
 const count = Object.fromEntries(SEV.map((s) => [s, findings.filter((f) => f.severity === s).length]));
-console.log(JSON.stringify({ results: join(work, "results.json"), count, packages: vulnerablePackages.length, falsePositives: falsePositives.length }));
+const progress = Object.fromEntries(STATUS.slice(0, 4).map((st) => [st, findings.filter((f) => (f.resolution?.status ?? "open") === st).length]));
+console.log(JSON.stringify({ results: join(work, "results.json"), count, progress, packages: vulnerablePackages.length, falsePositives: falsePositives.length }));
 if (!summary.summary?.overview) console.log("注意: summary.json の summary.overview / topActions が未記入");

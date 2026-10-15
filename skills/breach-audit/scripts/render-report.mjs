@@ -87,6 +87,11 @@ details.f[open] > summary { border-bottom: 1px solid var(--border); }
 code, .loc { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; background: var(--code); padding: 1px 6px; border-radius: 4px; }
 .loc { display: inline-block; margin: 0 4px 4px 0; }
 .fix dd { color: var(--ok); }
+.st { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; white-space: nowrap; border: 1px solid currentColor; }
+.st-open { color: var(--muted); } .st-in_progress { color: var(--medium); } .st-fixed { color: var(--ok); } .st-accepted { color: var(--low); }
+details.f.done > summary .title { text-decoration: line-through; color: var(--muted); }
+.progress { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 14px; }
+.progress .open-hi { color: var(--critical); font-weight: 600; }
 .empty { color: var(--muted); font-style: italic; padding: 8px 0; }
 .tbl-wrap { overflow-x: auto; }
 table.pk { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 760px; }
@@ -117,6 +122,7 @@ ul.plain li { margin: 3px 0; }
   <div class="warn">このレポートは脆弱性の詳細を含みます。リポジトリへのコミットや外部への共有はしないでください。</div>
 
   <div class="tiles" id="tiles"></div>
+  <div class="panel progress" id="progress"></div>
   <div class="panel overview" id="overview" hidden></div>
 
   <h2>今日やるべきこと</h2>
@@ -129,6 +135,7 @@ ul.plain li { margin: 3px 0; }
   <div class="toolbar">
     <input id="q" type="search" placeholder="キーワード・ファイル名で絞り込み">
     <select id="cat"><option value="">すべてのカテゴリ</option></select>
+    <select id="st"><option value="">すべての対応状況</option><option value="open">未対応</option><option value="in_progress">対応中</option><option value="fixed">対応済み</option><option value="accepted">リスク受容</option></select>
     <select id="conf"><option value="">すべての確度</option><option value="high">確度 high</option><option value="medium">確度 medium</option><option value="low">確度 low</option></select>
     <button class="tag" id="toggle" type="button">すべて開く</button>
     <span class="count" id="count"></span>
@@ -153,6 +160,11 @@ ul.plain li { margin: 3px 0; }
   const SEV = ["Critical", "High", "Medium", "Low", "Info"];
   const CATS = { A: "依存関係・サプライチェーン", B: "CI/CD・GitHub", C: "シークレット・AI エージェント", D: "認証・認可", E: "コードの脆弱性", F: "個人情報・インフラ" };
   const VERDICT = { confirmed: "検証済み", downgraded: "検証で格下げ" };
+  const STATUS = { open: "未対応", in_progress: "対応中", fixed: "対応済み", accepted: "リスク受容" };
+  const stOf = (x) => (x && x.resolution && STATUS[x.resolution.status] ? x.resolution.status : "open");
+  const stBadge = (x) => el("span", { className: "st st-" + stOf(x) }, STATUS[stOf(x)]);
+  const isUrl = (u) => /^https?:\/\//.test(String(u || ""));
+  const resText = (r) => [r.date, r.note].filter(Boolean).join(" ");
   const $ = (id) => document.getElementById(id);
   const el = (tag, props = {}, ...kids) => {
     const n = document.createElement(tag);
@@ -174,6 +186,7 @@ ul.plain li { margin: 3px 0; }
   document.title = "セキュリティ監査 " + (m.repo || "");
   $("meta").append(...[
     m.date && "実施日 " + m.date,
+    m.updated && "対応状況の更新 " + m.updated,
     m.remote,
     m.commit && "commit " + String(m.commit).slice(0, 10) + (m.dirty ? "（未コミット変更あり）" : ""),
     m.depth && "depth " + m.depth,
@@ -189,12 +202,17 @@ ul.plain li { margin: 3px 0; }
     b.onclick = () => { active.has(s) ? active.delete(s) : active.add(s); b.setAttribute("aria-pressed", active.has(s)); render(); };
     $("tiles").append(b);
   }
+  const stCount = (st) => findings.filter((f) => stOf(f) === st).length;
+  $("progress").append(el("b", {}, "対応状況"), ...Object.keys(STATUS).map((st) => el("span", {}, stBadge({ resolution: { status: st } }), " " + stCount(st))));
+  const openHi = findings.filter((f) => (f.severity === "Critical" || f.severity === "High") && (stOf(f) === "open" || stOf(f) === "in_progress")).length;
+  $("progress").append(el("span", { className: openHi ? "open-hi" : "" }, "Critical/High の残り " + openHi + " 件"));
   if (D.summary.overview) { $("overview").hidden = false; $("overview").textContent = D.summary.overview; }
 
   const acts = D.summary.topActions || [];
   if (!acts.length) $("actions").replaceWith(el("div", { className: "empty" }, "なし"));
   for (const a of acts) {
-    $("actions").append(el("li", {},
+    const af = findings.find((f) => f.id === a.id);
+    $("actions").append(el("li", {}, af ? stBadge(af) : "", af ? " " : "",
       a.id ? el("a", { className: "fid", href: "#f-" + a.id }, a.id) : "", a.id ? " " : "",
       a.action || "", a.reason ? el("div", { className: "why" }, a.reason) : ""));
   }
@@ -228,33 +246,36 @@ ul.plain li { margin: 3px 0; }
       row("場所", locs.length ? el("span", {}, locs.map((l) => el("span", { className: "loc" }, l))) : ""),
       row("根拠", f.evidence), row("影響", f.impact), row("悪用の前提", f.exploit_precondition),
       ...(f.fix ? [el("dt", {}, "修正方針"), el("dd", { style: "color:var(--ok)" }, f.fix)] : []),
-      row("検証", f.verifyReason));
+      row("検証", f.verifyReason),
+      ...(f.resolution ? [el("dt", {}, "対応状況"), el("dd", {}, stBadge(f), " ", resText(f.resolution),
+        f.resolution.ref ? [" ", isUrl(f.resolution.ref) ? el("a", { href: f.resolution.ref, target: "_blank", rel: "noopener" }, f.resolution.ref) : el("code", {}, f.resolution.ref)] : "")] : []));
     const tags = el("span", { className: "tags" },
+      stBadge(f),
       f.checklist && el("span", { className: "tag" }, f.checklist),
       f.confidence && el("span", { className: "tag" }, "確度 " + f.confidence),
       VERDICT[f.verdict] && el("span", { className: "tag" }, VERDICT[f.verdict] + (f.originalSeverity ? "（元 " + f.originalSeverity + "）" : "")),
       f.effort && el("span", { className: "tag" }, "工数 " + f.effort));
-    const d = el("details", { className: "f", id: "f-" + f.id, style: sevVars(f.severity) },
+    const d = el("details", { className: "f" + (stOf(f) === "fixed" || stOf(f) === "accepted" ? " done" : ""), id: "f-" + f.id, style: sevVars(f.severity) },
       el("summary", {}, el("span", { className: "sev" }, f.severity || "Info"), el("span", { className: "fid" }, f.id || ""), el("span", { className: "title" }, f.title || ""), tags),
       dl);
     d._f = f;
-    d._text = [f.id, f.title, f.location, f.evidence, f.impact, f.fix, f.checklist].join(" ").toLowerCase();
+    d._text = [f.id, f.title, f.location, f.evidence, f.impact, f.fix, f.checklist, f.resolution && f.resolution.note].join(" ").toLowerCase();
     return d;
   });
   $("findings").append(...nodes);
   const empty = el("div", { className: "empty" }, "該当する指摘はありません");
   $("findings").append(empty);
   function render() {
-    const q = $("q").value.trim().toLowerCase(), c = $("cat").value, cf = $("conf").value;
+    const q = $("q").value.trim().toLowerCase(), c = $("cat").value, cf = $("conf").value, st = $("st").value;
     let shown = 0;
     for (const n of nodes) {
-      const ok = active.has(n._f.severity || "Info") && (!c || catOf(n._f) === c) && (!cf || n._f.confidence === cf) && (!q || n._text.includes(q));
+      const ok = active.has(n._f.severity || "Info") && (!c || catOf(n._f) === c) && (!cf || n._f.confidence === cf) && (!st || stOf(n._f) === st) && (!q || n._text.includes(q));
       n.hidden = !ok; if (ok) shown++;
     }
     empty.hidden = shown > 0;
     $("count").textContent = shown + " / " + nodes.length + " 件";
   }
-  for (const id of ["q", "cat", "conf"]) $(id).addEventListener("input", render);
+  for (const id of ["q", "cat", "st", "conf"]) $(id).addEventListener("input", render);
   $("toggle").onclick = () => {
     const open = $("toggle").textContent === "すべて開く";
     nodes.forEach((n) => { if (!n.hidden) n.open = open; });
@@ -269,11 +290,12 @@ ul.plain li { margin: 3px 0; }
   // packages
   if (!D.vulnerablePackages.length) $("pkgs").append(el("div", { className: "empty" }, "検出なし（または未スキャン。調べていない範囲を参照）"));
   else {
-    const cols = [["name", "パッケージ"], ["version", "現行版"], ["fixed", "修正版"], ["advisory", "Advisory"], ["severity", "重大度"], ["direct", "直接/間接"], ["scope", "本番/dev"], ["reachable", "到達性"]];
+    const cols = [["name", "パッケージ"], ["version", "現行版"], ["fixed", "修正版"], ["advisory", "Advisory"], ["severity", "重大度"], ["direct", "直接/間接"], ["scope", "本番/dev"], ["reachable", "到達性"], ["resolution", "対応"]];
     const t = el("table", { className: "pk" }, el("tr", {}, cols.map(([, h]) => el("th", {}, h))));
     const pk = [...D.vulnerablePackages].sort((a, b) => order(a) - order(b));
     for (const p of pk) t.append(el("tr", {}, cols.map(([k]) => el("td", {},
       k === "severity" ? el("span", { className: "sev", style: sevVars(p.severity) }, p.severity || "") :
+      k === "resolution" ? [stBadge(p), p.resolution ? " " + resText(p.resolution) : ""] :
       k === "name" || k === "version" || k === "fixed" ? el("code", {}, p[k] ?? "") :
       typeof p[k] === "boolean" ? (k === "direct" ? (p[k] ? "直接" : "間接") : (p[k] ? "あり" : "なし")) : (p[k] ?? "")))));
     $("pkgs").append(t);
@@ -299,12 +321,18 @@ const cell = (s) => String(s ?? "").replace(/\|/g, "\\|").replace(/\n+/g, " ");
 const m = data.meta;
 const sevCount = SEV.map((s) => data.findings.filter((f) => f.severity === s).length);
 const list = (items, fmt) => (items.length ? items.map((x) => `- ${fmt(x)}`).join("\n") : "- なし");
+const STATUS = { open: "未対応", in_progress: "対応中", fixed: "対応済み", accepted: "リスク受容" };
+const stOf = (x) => (STATUS[x?.resolution?.status] ? x.resolution.status : "open");
+const stLabel = (x) => STATUS[stOf(x)];
+const resLine = (r) => [r.date, r.note, r.ref].filter(Boolean).join(" / ");
+const openHi = data.findings.filter((f) => ["Critical", "High"].includes(f.severity) && ["open", "in_progress"].includes(stOf(f))).length;
 const catText = (x) => (typeof x === "string" ? x : `${x.category ? `[${x.category}] ` : ""}${x.text ?? ""}`);
 const md = [
   `# セキュリティ監査レポート: ${m.repo ?? ""}`,
   "",
   ...[
     m.date && `- 実施日: ${m.date}`,
+    m.updated && `- 対応状況の更新: ${m.updated}`,
     (m.remote || m.commit) && `- 対象: ${[m.remote, m.commit && String(m.commit).slice(0, 10)].filter(Boolean).join(" @ ")}${m.dirty ? "（未コミット変更あり）" : ""}`,
     m.depth && `- depth: ${m.depth}`,
     m.tools?.length && `- 使用スキャナ: ${m.tools.join(", ")}`,
@@ -317,11 +345,13 @@ const md = [
   `|${SEV.map(() => "---:").join("|")}|`,
   `| ${sevCount.join(" | ")} |`,
   "",
+  `対応状況: ${Object.keys(STATUS).map((st) => `${STATUS[st]} ${data.findings.filter((f) => stOf(f) === st).length}`).join(" / ")}（Critical/High の残り ${openHi} 件）`,
+  "",
   data.summary.overview ?? "",
   "",
   "### 今日やるべきこと",
   "",
-  ...(data.summary.topActions ?? []).map((a, i) => `${i + 1}. ${a.id ? `${a.id}: ` : ""}${a.action ?? ""}${a.reason ? `（${a.reason}）` : ""}`),
+  ...(data.summary.topActions ?? []).map((a, i) => `${i + 1}. ${a.id ? `[${stLabel(data.findings.find((f) => f.id === a.id))}] ${a.id}: ` : ""}${a.action ?? ""}${a.reason ? `（${a.reason}）` : ""}`),
   "",
   "## 調べていない範囲",
   "",
@@ -329,9 +359,9 @@ const md = [
   "",
   "## 指摘一覧",
   "",
-  "| ID | 深刻度 | 確度 | 概要 | 場所 | 工数 |",
-  "|----|--------|------|------|------|------|",
-  ...data.findings.map((f) => `| ${f.id} | ${f.severity} | ${f.confidence ?? ""} | ${cell(f.title)} | \`${cell(f.location)}\` | ${f.effort ?? ""} |`),
+  "| ID | 深刻度 | 確度 | 対応 | 概要 | 場所 | 工数 |",
+  "|----|--------|------|------|------|------|------|",
+  ...data.findings.map((f) => `| ${f.id} | ${f.severity} | ${f.confidence ?? ""} | ${stLabel(f)} | ${cell(f.title)} | \`${cell(f.location)}\` | ${f.effort ?? ""} |`),
   "",
   "## 指摘の詳細",
   "",
@@ -345,16 +375,17 @@ const md = [
     `- **悪用の前提**: ${f.exploit_precondition ?? ""}`,
     `- **修正方針**: ${f.fix ?? ""}`,
     ...(f.verifyReason ? [`- **検証の根拠**: ${f.verifyReason}`] : []),
+    `- **対応状況**: ${stLabel(f)}${f.resolution && resLine(f.resolution) ? `（${resLine(f.resolution)}）` : ""}`,
     "",
   ]),
   "## パッケージの既知脆弱性",
   "",
   ...(data.vulnerablePackages.length
     ? [
-        "| パッケージ | 現行版 | 修正版 | Advisory | 重大度 | 直接/間接 | 本番/dev | 到達性 |",
-        "|---|---|---|---|---|---|---|---|",
+        "| パッケージ | 現行版 | 修正版 | Advisory | 重大度 | 直接/間接 | 本番/dev | 到達性 | 対応 |",
+        "|---|---|---|---|---|---|---|---|---|",
         ...data.vulnerablePackages.map((p) =>
-          `| ${cell(p.name)} | ${cell(p.version)} | ${cell(p.fixed)} | ${cell(p.advisory)} | ${p.severity ?? ""} | ${p.direct ? "直接" : "間接"} | ${cell(p.scope)} | ${cell(p.reachable)} |`),
+          `| ${cell(p.name)} | ${cell(p.version)} | ${cell(p.fixed)} | ${cell(p.advisory)} | ${p.severity ?? ""} | ${p.direct ? "直接" : "間接"} | ${cell(p.scope)} | ${cell(p.reachable)} | ${stLabel(p)}${p.resolution && resLine(p.resolution) ? ` ${cell(resLine(p.resolution))}` : ""} |`),
       ]
     : ["検出なし"]),
   "",
