@@ -93,7 +93,10 @@ code, .loc { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-s
 .fix dd { color: var(--ok); }
 .st { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; white-space: nowrap; border: 1px solid currentColor; }
 .st-open { color: var(--muted); } .st-in_progress { color: var(--medium); } .st-fixed { color: var(--ok); } .st-accepted { color: var(--low); }
-details.f.done > summary .title { text-decoration: line-through; color: var(--muted); }
+details.f.done { --c: var(--muted) !important; --cbg: var(--code) !important; opacity: .6; }
+details.f.done > summary .title { color: var(--muted); font-weight: 500; }
+details.f.done:hover, details.f.done[open] { opacity: 1; }
+.chk { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--muted); white-space: nowrap; cursor: pointer; }
 .progress { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 14px; }
 .progress .open-hi { color: var(--critical); font-weight: 600; }
 .empty { color: var(--muted); font-style: italic; padding: 8px 0; }
@@ -146,6 +149,7 @@ ul.plain li { margin: 3px 0; }
     <select id="cat"><option value="">すべてのカテゴリ</option></select>
     <select id="st"><option value="">すべての対応状況</option><option value="open">未対応</option><option value="in_progress">対応中</option><option value="fixed">対応済み</option><option value="accepted">リスク受容</option></select>
     <select id="conf"><option value="">すべての確度</option><option value="high">確度 high</option><option value="medium">確度 medium</option><option value="low">確度 low</option></select>
+    <label class="chk"><input type="checkbox" id="showdone">解消済みも表示</label>
     <button class="tag" id="toggle" type="button">すべて開く</button>
     <span class="count" id="count"></span>
   </div>
@@ -287,7 +291,7 @@ ul.plain li { margin: 3px 0; }
       f.confidence && el("span", { className: "tag" }, "確度 " + f.confidence),
       VERDICT[f.verdict] && el("span", { className: "tag" }, VERDICT[f.verdict] + (f.originalSeverity ? "（元 " + f.originalSeverity + "）" : "")),
       f.effort && el("span", { className: "tag" }, "工数 " + f.effort));
-    const d = el("details", { className: "f" + (stOf(f) === "fixed" || stOf(f) === "accepted" ? " done" : ""), id: "f-" + f.id, style: sevVars(f.severity) },
+    const d = el("details", { className: "f" + (isLeft(f) ? "" : " done"), id: "f-" + f.id, style: sevVars(f.severity) },
       el("summary", {}, el("span", { className: "sev" }, f.severity || "Info"), el("span", { className: "fid" }, f.id || ""), el("span", { className: "title" }, f.title || ""), tags),
       dl);
     d._f = f;
@@ -299,22 +303,32 @@ ul.plain li { margin: 3px 0; }
   $("findings").append(empty);
   function render() {
     const q = $("q").value.trim().toLowerCase(), c = $("cat").value, cf = $("conf").value, st = $("st").value;
-    let shown = 0;
+    // 解消済み（対応済み・リスク受容）は既定で隠す。対応状況で明示的に選んだときは出す
+    const showDone = $("showdone").checked || st === "fixed" || st === "accepted";
+    let shown = 0, hiddenDone = 0;
     for (const n of nodes) {
       const ok = active.has(n._f.severity || "Info") && (!c || catOf(n._f) === c) && (!cf || n._f.confidence === cf) && (!st || stOf(n._f) === st) && (!q || n._text.includes(q));
-      n.hidden = !ok; if (ok) shown++;
+      const vis = ok && (showDone || isLeft(n._f));
+      if (ok && !vis) hiddenDone++;
+      n.hidden = !vis; if (vis) shown++;
     }
     empty.hidden = shown > 0;
-    $("count").textContent = shown + " / " + nodes.length + " 件";
+    empty.textContent = hiddenDone ? "未解消の指摘はありません" : "該当する指摘はありません";
+    $("count").textContent = shown + " / " + nodes.length + " 件" + (hiddenDone ? "（解消済み " + hiddenDone + " 件を非表示）" : "");
   }
-  for (const id of ["q", "cat", "st", "conf"]) $(id).addEventListener("input", render);
+  for (const id of ["q", "cat", "st", "conf", "showdone"]) $(id).addEventListener("input", render);
   $("toggle").onclick = () => {
     const open = $("toggle").textContent === "すべて開く";
     nodes.forEach((n) => { if (!n.hidden) n.open = open; });
     $("toggle").textContent = open ? "すべて閉じる" : "すべて開く";
   };
   // 今日やるべきことからのジャンプで開く
-  const openHash = () => { const t = document.getElementById(decodeURIComponent(location.hash.slice(1))); if (t && t.tagName === "DETAILS") t.open = true; };
+  const openHash = () => {
+    const t = document.getElementById(decodeURIComponent(location.hash.slice(1)));
+    if (!t || t.tagName !== "DETAILS") return;
+    if (t.hidden && !isLeft(t._f)) { $("showdone").checked = true; render(); }
+    t.open = true; t.scrollIntoView();
+  };
   addEventListener("hashchange", openHash);
   render();
   openHash();
